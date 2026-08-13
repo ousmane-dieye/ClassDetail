@@ -1,0 +1,760 @@
+-- =========================================================
+-- CLASSPULSE — SCHEMA POSTGRESQL / SUPABASE
+-- =========================================================
+-- Ce fichier est idempotent autant que possible (IF NOT EXISTS)
+-- A exécuter dans l'éditeur SQL de Supabase, dans l'ordre.
+-- =========================================================
+
+-- ---------------------------------------------------------
+-- 0. EXTENSIONS
+-- ---------------------------------------------------------
+create extension if not exists "pgcrypto";      -- gen_random_uuid()
+-- NB: la planification est gérée par Vercel Cron (voir vercel.json), pas par pg_cron.
+
+-- ---------------------------------------------------------
+-- 1. ENUMS
+-- ---------------------------------------------------------
+do $$ begin
+  create type user_role as enum ('STUDENT', 'DELEGATE', 'ADMIN');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type registration_status as enum ('PENDING', 'ACCEPTED', 'REJECTED');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type task_type as enum ('EXERCISE', 'TP', 'ASSIGNMENT', 'RESEARCH', 'PROJECT', 'OTHER');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type hint_type as enum ('DEVOIR', 'EXAMEN', 'CONTROLE', 'TP', 'PROJET', 'AUTRE');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type reminder_kind as enum ('J3', 'J1');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type notification_type as enum (
+    'TASK_REMINDER',
+    'REGISTRATION_ACCEPTED',
+    'REGISTRATION_REJECTED',
+    'TASK_CREATED',
+    'DOCUMENT_ADDED',
+    'HINT_ADDED',
+    'RECORDING_ADDED',
+    'DELEGATE_APPOINTED',
+    'DELEGATE_REMOVED'
+  );
+exception when duplicate_object then null; end $$;
+
+-- ---------------------------------------------------------
+-- 2. TABLE: classes
+-- ---------------------------------------------------------
+create table if not exists classes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  level text not null,
+  academic_year text not null,
+  created_at timestamptz not null default now(),
+  unique (name, academic_year)
+);
+
+-- ---------------------------------------------------------
+-- 3. TABLE: profiles (miroir de auth.users)
+-- ---------------------------------------------------------
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  first_name text not null,
+  last_name text not null,
+  email text not null unique,
+  role user_role not null default 'STUDENT',
+  class_id uuid references classes(id) on delete set null,
+  last_seen_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_profiles_class_id on profiles(class_id);
+create index if not exists idx_profiles_role on profiles(role);
+create index if not exists idx_profiles_last_seen on profiles(last_seen_at desc);
+
+-- ---------------------------------------------------------
+-- 4. TABLE: class_members (appartenance active à une classe)
+-- ---------------------------------------------------------
+-- Redondant avec profiles.class_id volontairement : profiles.class_id
+-- = classe active de l'utilisateur ; class_members garde un historique
+-- et permet des règles d'accès explicites plus robustes pour RLS.
+create table if not exists class_members (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  joined_at timestamptz not null default now(),
+  unique (class_id, user_id)
+);
+
+create index if not exists idx_class_members_class on class_members(class_id);
+create index if not exists idx_class_members_user on class_members(user_id);
+
+-- ---------------------------------------------------------
+-- 5. TABLE: subjects (matières)
+-- ---------------------------------------------------------
+create table if not exists subjects (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  name text not null,
+  code text,
+  created_at timestamptz not null default now(),
+  unique (class_id, name)
+);
+
+create index if not exists idx_subjects_class_id on subjects(class_id);
+
+-- ---------------------------------------------------------
+-- 6. TABLE: registration_requests
+-- ---------------------------------------------------------
+create table if not exists registration_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  class_id uuid not null references classes(id) on delete cascade,
+  status registration_status not null default 'PENDING',
+  decided_by uuid references profiles(id),
+  decided_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_regreq_class_id on registration_requests(class_id);
+create index if not exists idx_regreq_status on registration_requests(status);
+-- Un utilisateur ne peut avoir qu'UNE demande PENDING à la fois
+create unique index if not exists uq_regreq_pending_per_user
+  on registration_requests(user_id)
+  where status = 'PENDING';
+
+-- ---------------------------------------------------------
+-- 7. TABLE: tasks
+-- ---------------------------------------------------------
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  subject_id uuid not null references subjects(id) on delete cascade,
+  creator_id uuid not null references profiles(id) on delete set null,
+  title text not null,
+  description text,
+  type task_type not null default 'OTHER',
+  due_date timestamptz not null,
+  attachment_link text,
+  is_expired boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_tasks_class_id on tasks(class_id);
+create index if not exists idx_tasks_subject_id on tasks(subject_id);
+create index if not exists idx_tasks_creator_id on tasks(creator_id);
+create index if not exists idx_tasks_due_date on tasks(due_date);
+
+-- ---------------------------------------------------------
+-- 8. TABLE: task_completions (état individuel)
+-- ---------------------------------------------------------
+create table if not exists task_completions (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  student_id uuid not null references profiles(id) on delete cascade,
+  completed_at timestamptz not null default now(),
+  unique (task_id, student_id)
+);
+
+create index if not exists idx_task_completions_task on task_completions(task_id);
+create index if not exists idx_task_completions_student on task_completions(student_id);
+
+-- ---------------------------------------------------------
+-- 9. TABLE: task_reminders_sent (anti-doublons)
+-- ---------------------------------------------------------
+create table if not exists task_reminders_sent (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  student_id uuid not null references profiles(id) on delete cascade,
+  kind reminder_kind not null,
+  sent_at timestamptz not null default now(),
+  unique (task_id, student_id, kind)
+);
+
+create index if not exists idx_reminders_task on task_reminders_sent(task_id);
+
+-- ---------------------------------------------------------
+-- 10. TABLE: documents
+-- ---------------------------------------------------------
+create table if not exists documents (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  subject_id uuid not null references subjects(id) on delete cascade,
+  title text not null,
+  description text,
+  drive_url text not null,
+  author_id uuid not null references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_documents_class_id on documents(class_id);
+create index if not exists idx_documents_subject_id on documents(subject_id);
+create index if not exists idx_documents_created_at on documents(created_at desc);
+
+-- ---------------------------------------------------------
+-- 11. TABLE: hints (anciens devoirs/examens)
+-- ---------------------------------------------------------
+create table if not exists hints (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  subject_id uuid not null references subjects(id) on delete cascade,
+  title text not null,
+  year text not null,
+  type hint_type not null default 'AUTRE',
+  drive_url text not null,
+  author_id uuid not null references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_hints_class_id on hints(class_id);
+create index if not exists idx_hints_subject_id on hints(subject_id);
+create index if not exists idx_hints_year on hints(year);
+
+-- ---------------------------------------------------------
+-- 12. TABLE: recordings (cours enregistrés)
+-- ---------------------------------------------------------
+create table if not exists recordings (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  subject_id uuid not null references subjects(id) on delete cascade,
+  title text not null,
+  date date not null,
+  description text,
+  drive_url text not null,
+  creator_id uuid not null references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_recordings_class_id on recordings(class_id);
+create index if not exists idx_recordings_subject_id on recordings(subject_id);
+create index if not exists idx_recordings_date on recordings(date desc);
+
+-- ---------------------------------------------------------
+-- 13. TABLE: chat_messages
+-- ---------------------------------------------------------
+create table if not exists chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  author_id uuid not null references profiles(id) on delete set null,
+  content text not null check (char_length(content) between 1 and 2000),
+  is_announcement boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_chat_class_created on chat_messages(class_id, created_at desc);
+
+-- Realtime : publier les INSERT/DELETE du chat aux membres de la classe.
+-- (Doit être activé sinon les événements temps réel ne sont jamais diffusés.)
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'chat_messages'
+  ) then
+    alter publication supabase_realtime add table chat_messages;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------
+-- 14. TABLE: notifications
+-- ---------------------------------------------------------
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid not null references profiles(id) on delete cascade,
+  type notification_type not null,
+  title text not null,
+  message text not null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_notifications_recipient on notifications(recipient_id, created_at desc);
+create index if not exists idx_notifications_unread on notifications(recipient_id) where read_at is null;
+
+-- ---------------------------------------------------------
+-- 14b. TABLE: assignment_email_notifications (trace des emails automatiques)
+-- ---------------------------------------------------------
+-- Historique complet des emails envoyés / en échec / en attente, avec
+-- anti-doublon : un email SENT de même type pour un même (devoir, utilisateur)
+-- ne sera jamais renvoyé (index uniques partiels ci-dessous).
+create table if not exists assignment_email_notifications (
+  id uuid primary key default gen_random_uuid(),
+  assignment_id uuid references tasks(id) on delete cascade, -- null pour AUTHENTICATION_APPROVED
+  user_id uuid not null references profiles(id) on delete cascade,
+  email text not null check (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+  notification_type text not null check (notification_type in ('AUTHENTICATION_APPROVED','ASSIGNMENT_3_DAYS','ASSIGNMENT_1_DAY')),
+  status text not null default 'PENDING' check (status in ('PENDING','SENT','FAILED')),
+  sent_at timestamptz,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_email_notifs_user on assignment_email_notifications(user_id, created_at desc);
+create index if not exists idx_email_notifs_status on assignment_email_notifications(status);
+create index if not exists idx_email_notifs_assignment on assignment_email_notifications(assignment_id);
+-- Anti-doublon en base : au plus UN SENT par (devoir, utilisateur, type).
+create unique index if not exists uq_email_notif_sent_per_assignment
+  on assignment_email_notifications(assignment_id, user_id, notification_type)
+  where assignment_id is not null and status = 'SENT';
+create unique index if not exists uq_email_notif_sent_auth
+  on assignment_email_notifications(user_id, notification_type)
+  where assignment_id is null and status = 'SENT';
+
+-- =========================================================
+-- 15. FONCTIONS UTILITAIRES (utilisées par RLS)
+-- =========================================================
+
+create or replace function current_profile_role()
+returns user_role
+language sql stable security definer
+set search_path = public
+as $$
+  select role from profiles where id = auth.uid();
+$$;
+
+-- Un utilisateur n'a accès aux données de classe que s'il est ADMIN ou si sa
+-- demande d'inscription a été ACCEPTED (les comptes PENDING sont bloqués).
+create or replace function is_approved_member()
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select is_admin()
+     or exists (
+          select 1 from registration_requests r
+          where r.user_id = auth.uid() and r.status = 'ACCEPTED'
+        );
+$$;
+
+create or replace function current_profile_class_id()
+returns uuid
+language sql stable security definer
+set search_path = public
+as $$
+  select p.class_id
+  from profiles p
+  where p.id = auth.uid()
+    and (
+      is_admin()
+      or exists (
+        select 1 from registration_requests r
+        where r.user_id = p.id and r.status = 'ACCEPTED'
+      )
+    );
+$$;
+
+create or replace function is_admin()
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select coalesce((select role = 'ADMIN' from profiles where id = auth.uid()), false);
+$$;
+
+create or replace function is_delegate_of(target_class uuid)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select role = 'DELEGATE' and class_id = target_class from profiles where id = auth.uid()),
+    false
+  );
+$$;
+
+create or replace function is_member_of(target_class uuid)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select is_admin()
+     or (
+       is_approved_member()
+       and exists (
+         select 1 from profiles p
+         where p.id = auth.uid() and p.class_id = target_class
+       )
+     );
+$$;
+
+-- =========================================================
+-- 16. TRIGGERS
+-- =========================================================
+
+create or replace function set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end; $$;
+
+drop trigger if exists trg_profiles_updated on profiles;
+create trigger trg_profiles_updated before update on profiles
+  for each row execute function set_updated_at();
+
+drop trigger if exists trg_tasks_updated on tasks;
+create trigger trg_tasks_updated before update on tasks
+  for each row execute function set_updated_at();
+
+-- Empêche un STUDENT/DELEGATE de modifier son propre role/class_id
+-- (double sécurité en plus de RLS ci-dessous)
+create or replace function prevent_self_privilege_escalation()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() = old.id and not is_admin() then
+    if new.role is distinct from old.role then
+      raise exception 'Modification du rôle interdite';
+    end if;
+    if new.class_id is distinct from old.class_id then
+      raise exception 'Modification de la classe interdite';
+    end if;
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists trg_prevent_escalation on profiles;
+create trigger trg_prevent_escalation before update on profiles
+  for each row execute function prevent_self_privilege_escalation();
+
+-- =========================================================
+-- 17. ROW LEVEL SECURITY
+-- =========================================================
+
+alter table classes enable row level security;
+alter table profiles enable row level security;
+alter table class_members enable row level security;
+alter table subjects enable row level security;
+alter table registration_requests enable row level security;
+alter table tasks enable row level security;
+alter table task_completions enable row level security;
+alter table task_reminders_sent enable row level security;
+alter table documents enable row level security;
+alter table hints enable row level security;
+alter table recordings enable row level security;
+alter table chat_messages enable row level security;
+alter table notifications enable row level security;
+
+alter table assignment_email_notifications enable row level security;
+
+-- ---- assignment_email_notifications ----
+-- Lecture réservée aux administrateurs (les écritures sont faites par le
+-- service role côté serveur / cron, qui contourne RLS).
+drop policy if exists email_notifs_admin_select on assignment_email_notifications;
+create policy email_notifs_admin_select on assignment_email_notifications for select
+  using (is_admin());
+
+-- ---- classes ----
+drop policy if exists classes_select on classes;
+create policy classes_select on classes for select
+  using (true); -- nécessaire pour le formulaire d'inscription (liste des classes)
+
+drop policy if exists classes_insert on classes;
+create policy classes_insert on classes for insert
+  with check (is_admin());
+
+drop policy if exists classes_delete on classes;
+create policy classes_delete on classes for delete
+  using (
+    is_admin()
+    and not exists (select 1 from profiles p where p.class_id = classes.id)
+  );
+
+-- ---- profiles ----
+drop policy if exists profiles_select on profiles;
+create policy profiles_select on profiles for select
+  using (
+    id = auth.uid()
+    or is_admin()
+    or (class_id is not null and class_id = current_profile_class_id())
+  );
+
+drop policy if exists profiles_update_self on profiles;
+create policy profiles_update_self on profiles for update
+  using (id = auth.uid() or is_admin());
+
+drop policy if exists profiles_update_admin_role on profiles;
+-- Seul un ADMIN peut changer le role/class_id d'un tiers (le trigger bloque aussi le self-service)
+create policy profiles_update_admin_role on profiles for update
+  using (is_admin());
+
+-- ---- class_members ----
+drop policy if exists class_members_select on class_members;
+create policy class_members_select on class_members for select
+  using (is_member_of(class_id));
+
+drop policy if exists class_members_admin_write on class_members;
+create policy class_members_admin_write on class_members for all
+  using (is_admin()) with check (is_admin());
+
+-- ---- subjects ----
+drop policy if exists subjects_select on subjects;
+create policy subjects_select on subjects for select
+  using (is_member_of(class_id));
+
+drop policy if exists subjects_admin_write on subjects;
+create policy subjects_admin_write on subjects for all
+  using (is_admin()) with check (is_admin());
+
+-- ---- registration_requests ----
+drop policy if exists regreq_select on registration_requests;
+create policy regreq_select on registration_requests for select
+  using (
+    user_id = auth.uid()
+    or is_admin()
+    or is_delegate_of(class_id)
+  );
+
+drop policy if exists regreq_insert on registration_requests;
+create policy regreq_insert on registration_requests for insert
+  with check (user_id = auth.uid());
+
+drop policy if exists regreq_update on registration_requests;
+create policy regreq_update on registration_requests for update
+  using (is_admin() or is_delegate_of(class_id));
+
+-- ---- tasks ----
+drop policy if exists tasks_select on tasks;
+create policy tasks_select on tasks for select
+  using (is_member_of(class_id));
+
+drop policy if exists tasks_write on tasks;
+create policy tasks_write on tasks for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+-- ---- task_completions ----
+drop policy if exists task_completions_select on task_completions;
+create policy task_completions_select on task_completions for select
+  using (
+    student_id = auth.uid()
+    or exists (
+      select 1 from tasks t
+      where t.id = task_completions.task_id and is_member_of(t.class_id)
+    )
+  );
+
+drop policy if exists task_completions_write on task_completions;
+create policy task_completions_write on task_completions for all
+  using (
+    student_id = auth.uid()
+    and exists (
+      select 1 from tasks t
+      where t.id = task_completions.task_id and is_member_of(t.class_id)
+    )
+  )
+  with check (student_id = auth.uid());
+
+-- ---- task_reminders_sent (uniquement backend / service role) ----
+drop policy if exists reminders_admin_only on task_reminders_sent;
+create policy reminders_admin_only on task_reminders_sent for all
+  using (is_admin()) with check (is_admin());
+
+-- ---- documents ----
+drop policy if exists documents_select on documents;
+create policy documents_select on documents for select
+  using (is_member_of(class_id));
+
+drop policy if exists documents_insert on documents;
+create policy documents_insert on documents for insert
+  with check (is_member_of(class_id) and author_id = auth.uid());
+
+drop policy if exists documents_delete on documents;
+create policy documents_delete on documents for delete
+  using (
+    author_id = auth.uid()
+    or is_admin()
+    or is_delegate_of(class_id)
+  );
+
+-- ---- hints ----
+drop policy if exists hints_select on hints;
+create policy hints_select on hints for select
+  using (is_member_of(class_id));
+
+drop policy if exists hints_insert on hints;
+create policy hints_insert on hints for insert
+  with check (is_member_of(class_id) and author_id = auth.uid());
+
+drop policy if exists hints_delete on hints;
+create policy hints_delete on hints for delete
+  using (
+    author_id = auth.uid()
+    or is_admin()
+    or is_delegate_of(class_id)
+  );
+
+-- ---- recordings ----
+drop policy if exists recordings_select on recordings;
+create policy recordings_select on recordings for select
+  using (is_member_of(class_id));
+
+drop policy if exists recordings_write on recordings;
+create policy recordings_write on recordings for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+-- ---- chat_messages ----
+drop policy if exists chat_select on chat_messages;
+create policy chat_select on chat_messages for select
+  using (is_member_of(class_id));
+
+drop policy if exists chat_insert on chat_messages;
+create policy chat_insert on chat_messages for insert
+  with check (is_member_of(class_id) and author_id = auth.uid());
+
+drop policy if exists chat_delete on chat_messages;
+create policy chat_delete on chat_messages for delete
+  using (is_admin() or is_delegate_of(class_id) or author_id = auth.uid());
+
+-- ---- notifications ----
+drop policy if exists notifications_select on notifications;
+create policy notifications_select on notifications for select
+  using (recipient_id = auth.uid() or is_admin());
+
+drop policy if exists notifications_update on notifications;
+create policy notifications_update on notifications for update
+  using (recipient_id = auth.uid());
+
+drop policy if exists notifications_insert on notifications;
+-- Toutes les notifications passent par NotificationService (service role, côté
+-- serveur). On interdit l'insertion côté client (anti-spam / anti-usurpation).
+create policy notifications_insert on notifications for insert
+  with check (is_admin());
+
+-- =========================================================
+-- 18. PLATEFORME TEMPS RÉEL (notifications unifiées + assistant)
+--     Équivalent de supabase/migrations/0002_realtime_platform.sql
+-- =========================================================
+
+-- ---- 18.1 Types de notifications supplémentaires ----
+do $$ begin
+  alter type notification_type add value if not exists 'ASSIGNMENT_CREATED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'ASSIGNMENT_UPDATED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'COURSE_SAVED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'ANNOUNCEMENT_CREATED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'COURSE_UPDATED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'TASK_COMPLETED';
+exception when duplicate_object then null; end $$;
+
+-- ---- 18.2 notifications enrichies ----
+alter table notifications add column if not exists entity_type text;
+alter table notifications add column if not exists entity_id uuid;
+alter table notifications add column if not exists link text;
+alter table notifications add column if not exists category text not null default 'system';
+
+create index if not exists idx_notifications_recipient_read
+  on notifications(recipient_id, read_at, created_at desc);
+create index if not exists idx_notifications_category
+  on notifications(recipient_id, category, created_at desc);
+
+-- ---- 18.3 assistant_chats / assistant_messages ----
+create table if not exists assistant_chats (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  title text not null default 'Nouveau chat',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists assistant_messages (
+  id uuid primary key default gen_random_uuid(),
+  chat_id uuid not null references assistant_chats(id) on delete cascade,
+  role text not null check (role in ('user','assistant')),
+  content text not null,
+  actions jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_assistant_msgs_chat on assistant_messages(chat_id, created_at);
+
+-- ---- 18.4 RLS nouvelles tables ----
+alter table assistant_chats enable row level security;
+alter table assistant_messages enable row level security;
+
+drop policy if exists assistant_chats_select on assistant_chats;
+create policy assistant_chats_select on assistant_chats for select
+  using (user_id = auth.uid());
+drop policy if exists assistant_chats_insert on assistant_chats;
+create policy assistant_chats_insert on assistant_chats for insert
+  with check (user_id = auth.uid());
+drop policy if exists assistant_chats_update on assistant_chats;
+create policy assistant_chats_update on assistant_chats for update
+  using (user_id = auth.uid());
+drop policy if exists assistant_chats_delete on assistant_chats;
+create policy assistant_chats_delete on assistant_chats for delete
+  using (user_id = auth.uid());
+
+drop policy if exists assistant_msgs_select on assistant_messages;
+create policy assistant_msgs_select on assistant_messages for select
+  using (exists (select 1 from assistant_chats ac where ac.id = assistant_messages.chat_id and ac.user_id = auth.uid()));
+drop policy if exists assistant_msgs_insert on assistant_messages;
+create policy assistant_msgs_insert on assistant_messages for insert
+  with check (exists (select 1 from assistant_chats ac where ac.id = assistant_messages.chat_id and ac.user_id = auth.uid()));
+
+-- ---- 18.5 Realtime ----
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='notifications') then
+    alter publication supabase_realtime add table notifications;
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='tasks') then
+    alter publication supabase_realtime add table tasks;
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='documents') then
+    alter publication supabase_realtime add table documents;
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='hints') then
+    alter publication supabase_realtime add table hints;
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='recordings') then
+    alter publication supabase_realtime add table recordings;
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='task_completions') then
+    alter publication supabase_realtime add table task_completions;
+  end if;
+end $$;
+
+-- ---- 18.6 Sécurité & index complémentaires ----
+-- L'email des profils n'est pas sélectionnable par les clients.
+do $$ begin
+  revoke select (email) on profiles from anon, authenticated;
+exception when others then null; end $$;
+do $$ begin
+  grant select (email) on profiles to service_role;
+exception when others then null; end $$;
+
+create index if not exists idx_notifications_entity on notifications(entity_id);
+create index if not exists idx_chat_announcements on chat_messages(class_id, is_announcement, created_at desc);
+
+-- =========================================================
+-- FIN DU SCHEMA
+-- =========================================================

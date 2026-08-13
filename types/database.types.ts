@@ -1,0 +1,358 @@
+// Types TypeScript reflétant supabase/schema.sql
+// Génération réelle recommandée en prod : `supabase gen types typescript`
+
+export type UserRole = "STUDENT" | "DELEGATE" | "ADMIN";
+export type RegistrationStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+export type TaskType = "EXERCISE" | "TP" | "ASSIGNMENT" | "RESEARCH" | "PROJECT" | "OTHER";
+export type HintType = "DEVOIR" | "EXAMEN" | "CONTROLE" | "TP" | "PROJET" | "AUTRE";
+export type ReminderKind = "J3" | "J1";
+export type NotificationType =
+  | "TASK_REMINDER"
+  | "REGISTRATION_ACCEPTED"
+  | "REGISTRATION_REJECTED"
+  | "TASK_CREATED"
+  | "DOCUMENT_ADDED"
+  | "HINT_ADDED"
+  | "RECORDING_ADDED"
+  | "DELEGATE_APPOINTED"
+  | "DELEGATE_REMOVED"
+  | "ASSIGNMENT_CREATED"
+  | "ASSIGNMENT_UPDATED"
+  | "COURSE_SAVED"
+  | "ANNOUNCEMENT_CREATED"
+  | "COURSE_UPDATED"
+  | "TASK_COMPLETED";
+
+export type NotificationCategory =
+  | "tasks"
+  | "assignments"
+  | "courses"
+  | "documents"
+  | "hints"
+  | "system"
+  | "announcements";
+
+export type EmailNotificationType = "AUTHENTICATION_APPROVED" | "ASSIGNMENT_3_DAYS" | "ASSIGNMENT_1_DAY";
+export type EmailNotificationStatus = "PENDING" | "SENT" | "FAILED";
+
+export type ClassRow = {
+  id: string;
+  name: string;
+  level: string;
+  academic_year: string;
+  created_at: string;
+};
+
+export type ProfileRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: UserRole;
+  class_id: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SubjectRow = {
+  id: string;
+  class_id: string;
+  name: string;
+  code: string | null;
+  created_at: string;
+};
+
+export type RegistrationRequestRow = {
+  id: string;
+  user_id: string;
+  class_id: string;
+  status: RegistrationStatus;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string;
+};
+
+export type TaskRow = {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  creator_id: string;
+  title: string;
+  description: string | null;
+  type: TaskType;
+  due_date: string;
+  attachment_link: string | null;
+  is_expired: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskCompletionRow = {
+  id: string;
+  task_id: string;
+  student_id: string;
+  completed_at: string;
+};
+
+export type TaskReminderSentRow = {
+  id: string;
+  task_id: string;
+  student_id: string;
+  kind: ReminderKind;
+  sent_at: string;
+};
+
+export type DocumentRow = {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  title: string;
+  description: string | null;
+  drive_url: string;
+  author_id: string;
+  created_at: string;
+};
+
+export type HintRow = {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  title: string;
+  year: string;
+  type: HintType;
+  drive_url: string;
+  author_id: string;
+  created_at: string;
+};
+
+export type RecordingRow = {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  title: string;
+  date: string;
+  description: string | null;
+  drive_url: string;
+  creator_id: string;
+  created_at: string;
+};
+
+export type ChatMessageRow = {
+  id: string;
+  class_id: string;
+  author_id: string;
+  content: string;
+  is_announcement: boolean;
+  created_at: string;
+};
+
+export type NotificationRow = {
+  id: string;
+  recipient_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  link: string | null;
+  category: NotificationCategory;
+};
+
+export type AssistantChatRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AssistantMessageRow = {
+  id: string;
+  chat_id: string;
+  role: "user" | "assistant";
+  content: string;
+  actions: unknown;
+  created_at: string;
+};
+
+export type AssistantAction = { label: string; href: string };
+
+export type EmailNotificationRow = {
+  id: string;
+  assignment_id: string | null;
+  user_id: string;
+  email: string;
+  notification_type: EmailNotificationType;
+  status: EmailNotificationStatus;
+  sent_at: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+// Schéma générique utilisé par le client Supabase typé
+export interface Database {
+  public: {
+    Tables: {
+      classes: {
+        Row: ClassRow;
+        Insert: Partial<ClassRow>;
+        Update: Partial<ClassRow>;
+        Relationships: [];
+      };
+      profiles: {
+        Row: ProfileRow;
+        Insert: Partial<ProfileRow>;
+        Update: Partial<ProfileRow>;
+        Relationships: [];
+      };
+      subjects: {
+        Row: SubjectRow;
+        Insert: Partial<SubjectRow>;
+        Update: Partial<SubjectRow>;
+        Relationships: [];
+      };
+      registration_requests: {
+        Row: RegistrationRequestRow;
+        Insert: Partial<RegistrationRequestRow>;
+        Update: Partial<RegistrationRequestRow>;
+        Relationships: [
+          {
+            foreignKeyName: "registration_requests_user_id_fkey",
+            columns: ["user_id"],
+            referencedRelation: "profiles",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "registration_requests_class_id_fkey",
+            columns: ["class_id"],
+            referencedRelation: "classes",
+            referencedColumns: ["id"],
+          },
+        ];
+      };
+      tasks: {
+        Row: TaskRow;
+        Insert: Partial<TaskRow>;
+        Update: Partial<TaskRow>;
+        Relationships: [];
+      };
+      task_completions: {
+        Row: TaskCompletionRow;
+        Insert: Partial<TaskCompletionRow>;
+        Update: Partial<TaskCompletionRow>;
+        Relationships: [
+          {
+            foreignKeyName: "task_completions_task_id_fkey",
+            columns: ["task_id"],
+            referencedRelation: "tasks",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "task_completions_student_id_fkey",
+            columns: ["student_id"],
+            referencedRelation: "profiles",
+            referencedColumns: ["id"],
+          },
+        ];
+      };
+      task_reminders_sent: {
+        Row: TaskReminderSentRow;
+        Insert: Partial<TaskReminderSentRow>;
+        Update: Partial<TaskReminderSentRow>;
+        Relationships: [
+          {
+            foreignKeyName: "task_reminders_sent_task_id_fkey",
+            columns: ["task_id"],
+            referencedRelation: "tasks",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "task_reminders_sent_student_id_fkey",
+            columns: ["student_id"],
+            referencedRelation: "profiles",
+            referencedColumns: ["id"],
+          },
+        ];
+      };
+      documents: {
+        Row: DocumentRow;
+        Insert: Partial<DocumentRow>;
+        Update: Partial<DocumentRow>;
+        Relationships: [];
+      };
+      hints: {
+        Row: HintRow;
+        Insert: Partial<HintRow>;
+        Update: Partial<HintRow>;
+        Relationships: [];
+      };
+      recordings: {
+        Row: RecordingRow;
+        Insert: Partial<RecordingRow>;
+        Update: Partial<RecordingRow>;
+        Relationships: [];
+      };
+      chat_messages: {
+        Row: ChatMessageRow;
+        Insert: Partial<ChatMessageRow>;
+        Update: Partial<ChatMessageRow>;
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_author_id_fkey",
+            columns: ["author_id"],
+            referencedRelation: "profiles",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "chat_messages_class_id_fkey",
+            columns: ["class_id"],
+            referencedRelation: "classes",
+            referencedColumns: ["id"],
+          },
+        ];
+      };
+      notifications: {
+        Row: NotificationRow;
+        Insert: Partial<NotificationRow>;
+        Update: Partial<NotificationRow>;
+        Relationships: [];
+      };
+      assistant_chats: {
+        Row: AssistantChatRow;
+        Insert: Partial<AssistantChatRow>;
+        Update: Partial<AssistantChatRow>;
+        Relationships: [];
+      };
+      assistant_messages: {
+        Row: AssistantMessageRow;
+        Insert: Partial<AssistantMessageRow>;
+        Update: Partial<AssistantMessageRow>;
+        Relationships: [];
+      };
+      assignment_email_notifications: {
+        Row: EmailNotificationRow;
+        Insert: Partial<EmailNotificationRow>;
+        Update: Partial<EmailNotificationRow>;
+        Relationships: [
+          {
+            foreignKeyName: "assignment_email_notifications_assignment_id_fkey",
+            columns: ["assignment_id"],
+            referencedRelation: "tasks",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "assignment_email_notifications_user_id_fkey",
+            columns: ["user_id"],
+            referencedRelation: "profiles",
+            referencedColumns: ["id"],
+          },
+        ];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+  };
+}
