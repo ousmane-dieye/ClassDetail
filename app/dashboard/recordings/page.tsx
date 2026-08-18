@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createRecordingAction, deleteRecordingAction } from "@/actions/recordings";
 import { RealtimeListSync } from "@/components/RealtimeListSync";
 import { PageHeader } from "@/components/PageHeader";
-import { Video, ExternalLink, Plus, Trash2, Calendar, PlayCircle } from "lucide-react";
+import { Video, ExternalLink, Plus, Calendar, PlayCircle } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -59,7 +60,7 @@ export default async function RecordingsPage() {
                 <form action={async (fd) => { "use server"; await createRecordingAction(fd); }} className="grid gap-4 md:grid-cols-2">
                   <input type="hidden" name="classId" value={profile!.class_id!} />
                   <Input name="title" placeholder="Titre de la séance (ex: Cours Algorithmique Avancée)" required />
-                  
+
                   <Select name="subjectId" required defaultValue="">
                     <option value="">Sélectionner une matière</option>
                     {(subjects ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -69,7 +70,7 @@ export default async function RecordingsPage() {
                   <Input name="date" type="date" required />
                   <Input name="driveUrl" placeholder="Lien Google Drive de la vidéo" required />
                   <Textarea name="description" placeholder="Chapitres et points abordés..." className="md:col-span-2" />
-                  
+
                   <Button type="submit" className="md:col-span-2 gap-2 h-11 text-base">
                     <Plus size={18} />
                     <span>Publier le cours enregistré</span>
@@ -127,11 +128,15 @@ export default async function RecordingsPage() {
                     </a>
 
                     {canManage && (
-                      <form action={async () => { "use server"; await deleteRecordingAction(r.id); }}>
-                        <Button size="icon" variant="danger" className="h-8 w-8" title="Supprimer la vidéo">
-                          <Trash2 size={14} />
-                        </Button>
-                      </form>
+                      <ConfirmDeleteButton
+                        action={deleteRecordingAction}
+                        resourceId={r.id}
+                        resourceName={r.title}
+                        resourceLabel="cet enregistrement"
+                        buttonTitle="Supprimer la vidéo"
+                        className="h-8 w-8"
+                        iconSize={14}
+                      />
                     )}
                   </div>
                 </div>

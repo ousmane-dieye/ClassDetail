@@ -35,8 +35,9 @@ const NAV_MAIN = [
 const NAV_COMMUNITY = [
   { href: "/dashboard/chat", label: "Chat de classe", icon: MessageSquare },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
-  { href: "/dashboard/stats", label: "Statistiques", icon: BarChart3 },
 ];
+
+const NAV_STATS = { href: "/dashboard/stats", label: "Statistiques", icon: BarChart3 };
 
 function NavGroup({
   title,
@@ -100,6 +101,9 @@ function NavGroup({
 function SidebarContent({ role, onNavigate }: { role: UserRole; onNavigate?: () => void }) {
   const pathname = usePathname();
 
+  const communityItems =
+    role === "STUDENT" ? [...NAV_COMMUNITY] : [...NAV_COMMUNITY, NAV_STATS];
+
   return (
     <div className="flex h-full flex-col">
       {/* Marque */}
@@ -123,7 +127,7 @@ function SidebarContent({ role, onNavigate }: { role: UserRole; onNavigate?: () 
       {/* Navigation */}
       <nav className="flex-1 space-y-6 overflow-y-auto">
         <NavGroup title="Menu principal" items={NAV_MAIN} role={role} onNavigate={onNavigate} />
-        <NavGroup title="Communauté" items={NAV_COMMUNITY} role={role} onNavigate={onNavigate} />
+        <NavGroup title="Communauté" items={communityItems} role={role} onNavigate={onNavigate} />
 
         {role === "ADMIN" && (
           <div className="space-y-0.5">

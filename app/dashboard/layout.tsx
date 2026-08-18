@@ -15,9 +15,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect("/login");
 
+  // Sécurité S1 : ne jamais sélectionner `email` via le client authenticated
+  // (colonne réservée au service role). Sélection explicite des colonnes.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("first_name, last_name, role")
     .eq("id", user.id)
     .single();
 

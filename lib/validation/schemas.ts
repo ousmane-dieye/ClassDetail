@@ -4,7 +4,7 @@ export const registerSchema = z
   .object({
     firstName: z.string().trim().min(2, "Prénom trop court").max(80),
     lastName: z.string().trim().min(2, "Nom trop court").max(80),
-    email: z.string().trim().email("Email invalide"),
+    email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
     password: z.string().min(8, "8 caractères minimum"),
     confirmPassword: z.string(),
     classId: z.string().uuid("Veuillez sélectionner une classe"),
@@ -15,9 +15,30 @@ export const registerSchema = z
   });
 
 export const loginSchema = z.object({
-  email: z.string().trim().email("Email invalide"),
+  email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
   password: z.string().min(1, "Mot de passe requis"),
 });
+
+export const resubmitSchema = z.object({
+  firstName: z.string().trim().min(2, "Prénom trop court").max(80),
+  lastName: z.string().trim().min(2, "Nom trop court").max(80),
+  classId: z.string().uuid("Veuillez sélectionner une classe"),
+});
+
+// F3 — Mot de passe oublié.
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    password: z.string().min(8, "8 caractères minimum"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Les mots de passe ne correspondent pas",
+    path: ["confirmPassword"],
+  });
 
 export const classSchema = z.object({
   name: z.string().trim().min(2).max(50),

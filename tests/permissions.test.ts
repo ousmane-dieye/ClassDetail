@@ -39,6 +39,20 @@ describe("canDeleteResource", () => {
   it("un étudiant ne peut pas supprimer le contenu d'un autre", () => {
     expect(canDeleteResource(student, "c1", "autre")).toBe(false);
   });
+
+  it("un délégué ne peut pas supprimer le contenu d'une autre classe", () => {
+    expect(canDeleteResource(delegate, "c2", "autre")).toBe(false);
+  });
+
+  it("un étudiant en attente (PENDING, rôle STUDENT) ne peut pas supprimer le contenu d'un autre", () => {
+    const pending = { id: "pend", role: "STUDENT" as const, classId: "c1" };
+    expect(canDeleteResource(pending, "c1", "autre")).toBe(false);
+  });
+
+  it("l'auteur peut toujours supprimer son propre contenu (PENDING compris)", () => {
+    const pending = { id: "pend", role: "STUDENT" as const, classId: "c1" };
+    expect(canDeleteResource(pending, "c1", pending.id)).toBe(true);
+  });
 });
 
 describe("permissions de classe", () => {

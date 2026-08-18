@@ -75,6 +75,11 @@ create table if not exists profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Unicité de l'email insensible à la casse (comme Supabase Auth) :
+-- `Admin@x.com` et `admin@x.com` sont le même compte.
+create unique index if not exists uq_profiles_email_lower
+  on profiles (lower(email));
+
 create index if not exists idx_profiles_class_id on profiles(class_id);
 create index if not exists idx_profiles_role on profiles(role);
 create index if not exists idx_profiles_last_seen on profiles(last_seen_at desc);
@@ -105,7 +110,9 @@ create table if not exists subjects (
   name text not null,
   code text,
   created_at timestamptz not null default now(),
-  unique (class_id, name)
+  unique (class_id, name),
+  -- S3 : cible de la FK composite (subject_id, class_id) des ressources.
+  unique (id, class_id)
 );
 
 create index if not exists idx_subjects_class_id on subjects(class_id);
@@ -145,7 +152,10 @@ create table if not exists tasks (
   attachment_link text,
   is_expired boolean not null default false,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- S3 : la matière doit appartenir à la même classe que la ressource.
+  constraint tasks_subject_class_fk
+    foreign key (subject_id, class_id) references subjects(id, class_id) on delete cascade
 );
 
 create index if not exists idx_tasks_class_id on tasks(class_id);
@@ -192,7 +202,10 @@ create table if not exists documents (
   description text,
   drive_url text not null,
   author_id uuid not null references profiles(id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- S3 : la matière doit appartenir à la même classe que la ressource.
+  constraint documents_subject_class_fk
+    foreign key (subject_id, class_id) references subjects(id, class_id) on delete cascade
 );
 
 create index if not exists idx_documents_class_id on documents(class_id);
@@ -211,7 +224,10 @@ create table if not exists hints (
   type hint_type not null default 'AUTRE',
   drive_url text not null,
   author_id uuid not null references profiles(id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- S3 : la matière doit appartenir à la même classe que la ressource.
+  constraint hints_subject_class_fk
+    foreign key (subject_id, class_id) references subjects(id, class_id) on delete cascade
 );
 
 create index if not exists idx_hints_class_id on hints(class_id);
@@ -230,7 +246,10 @@ create table if not exists recordings (
   description text,
   drive_url text not null,
   creator_id uuid not null references profiles(id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- S3 : la matière doit appartenir à la même classe que la ressource.
+  constraint recordings_subject_class_fk
+    foreign key (subject_id, class_id) references subjects(id, class_id) on delete cascade
 );
 
 create index if not exists idx_recordings_class_id on recordings(class_id);
@@ -604,13 +623,26 @@ create policy recordings_write on recordings for all
   with check (is_admin() or is_delegate_of(class_id));
 
 -- ---- chat_messages ----
+-- S2 : un message ne peut être une annonce (is_announcement = true) que si
+-- l'auteur est DELEGATE de la classe ou ADMIN (la Server Action vérifie aussi
+-- le rôle côté serveur ; ici la protection est garantie par PostgreSQL).
+-- NB : AUCUNE policy UPDATE sur chat_messages — toute modification d'un message
+-- existant (dont la transformation en annonce) est refusée par RLS.
 drop policy if exists chat_select on chat_messages;
 create policy chat_select on chat_messages for select
   using (is_member_of(class_id));
 
 drop policy if exists chat_insert on chat_messages;
 create policy chat_insert on chat_messages for insert
-  with check (is_member_of(class_id) and author_id = auth.uid());
+  with check (
+    is_member_of(class_id)
+    and author_id = auth.uid()
+    and (
+      is_announcement is not true
+      or is_admin()
+      or is_delegate_of(class_id)
+    )
+  );
 
 drop policy if exists chat_delete on chat_messages;
 create policy chat_delete on chat_messages for delete
@@ -622,8 +654,14 @@ create policy notifications_select on notifications for select
   using (recipient_id = auth.uid() or is_admin());
 
 drop policy if exists notifications_update on notifications;
+-- S6 : un utilisateur ne marque que read_at (lu/non-lu). Les colonnes de
+-- contenu (title, message, link, type, entity_id...) sont immuables :
+--  - privilèges colonne : REVOKE UPDATE (bloc S6 ci-dessous) ;
+--  - trigger trg_notifications_readonly : refuse toute modification ;
+--  - WITH CHECK : jamais de changement de destinataire.
 create policy notifications_update on notifications for update
-  using (recipient_id = auth.uid());
+  using (recipient_id = auth.uid())
+  with check (recipient_id = auth.uid());
 
 drop policy if exists notifications_insert on notifications;
 -- Toutes les notifications passent par NotificationService (service role, côté
@@ -666,6 +704,43 @@ create index if not exists idx_notifications_recipient_read
   on notifications(recipient_id, read_at, created_at desc);
 create index if not exists idx_notifications_category
   on notifications(recipient_id, category, created_at desc);
+
+-- ---- 18.2b S6 — notifications en lecture seule (sauf read_at) ----
+-- Un utilisateur ne peut que marquer une notification lue/non-lue (read_at).
+-- Toute autre colonne est immuable : REVOKE UPDATE au niveau table (l'ACL par
+-- défaut de Supabase accorde ALL aux rôles — un REVOKE colonne seul est
+-- impuissant) + REVOKE colonnes + trigger (défense en profondeur, tous rôles
+-- confondus).
+revoke update on notifications from anon, authenticated, public;
+revoke update (id, recipient_id, type, title, message, created_at,
+               entity_type, entity_id, link, category)
+  on notifications from anon, authenticated;
+grant update (read_at) on notifications to authenticated;
+
+create or replace function notifications_immutable_fields()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    if new.id is distinct from old.id
+       or new.recipient_id is distinct from old.recipient_id
+       or new.type is distinct from old.type
+       or new.title is distinct from old.title
+       or new.message is distinct from old.message
+       or new.entity_type is distinct from old.entity_type
+       or new.entity_id is distinct from old.entity_id
+       or new.link is distinct from old.link
+       or new.category is distinct from old.category
+       or new.created_at is distinct from old.created_at
+    then
+      raise exception 'S6 : champs de la notification immuables — seul read_at peut être modifié';
+    end if;
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists trg_notifications_readonly on notifications;
+create trigger trg_notifications_readonly before update on notifications
+  for each row execute function notifications_immutable_fields();
 
 -- ---- 18.3 assistant_chats / assistant_messages ----
 create table if not exists assistant_chats (
@@ -744,16 +819,81 @@ do $$ begin
 end $$;
 
 -- ---- 18.6 Sécurité & index complémentaires ----
--- L'email des profils n'est pas sélectionnable par les clients.
+-- L'email des profils n'est pas sélectionnable par les clients. Le revoke
+-- doit cibler le NIVEAU TABLE : le grant par défaut de Supabase est
+-- table-level, un revoke de colonne seul est impuissant (cf. S1).
 do $$ begin
-  revoke select (email) on profiles from anon, authenticated;
+  revoke select on profiles from anon, authenticated, public;
+  grant select (id, first_name, last_name, role, class_id, last_seen_at, created_at, updated_at)
+    on profiles to anon, authenticated;
 exception when others then null; end $$;
 do $$ begin
-  grant select (email) on profiles to service_role;
+  grant select on profiles to service_role;
 exception when others then null; end $$;
 
 create index if not exists idx_notifications_entity on notifications(entity_id);
 create index if not exists idx_chat_announcements on chat_messages(class_id, is_announcement, created_at desc);
+
+-- ---- 18.7 S9 — rate limiting IA distribué (Supabase partagé) ----
+-- Compteurs partagés entre toutes les instances (table ai_rate_limits +
+-- fonction atomique check_ai_rate_limit). Voir migration 0015.
+create table if not exists ai_rate_limits (
+  bucket_key text not null,
+  window_start timestamptz not null,
+  request_count int not null default 0,
+  primary key (bucket_key, window_start)
+);
+
+alter table ai_rate_limits enable row level security;
+drop policy if exists ai_rate_limits_all on ai_rate_limits;
+
+create or replace function check_ai_rate_limit(
+  p_bucket_key text,
+  p_limit int,
+  p_window_seconds int
+)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_window_start timestamptz;
+  v_count int;
+  v_elapsed int;
+begin
+  if p_limit <= 0 or p_window_seconds <= 0 then
+    return jsonb_build_object('allowed', false, 'retry_after_seconds', 60);
+  end if;
+
+  v_window_start := to_timestamp(
+    floor(extract(epoch from v_now) / p_window_seconds) * p_window_seconds
+  );
+
+  insert into ai_rate_limits (bucket_key, window_start, request_count)
+  values (p_bucket_key, v_window_start, 1)
+  on conflict (bucket_key, window_start)
+  do update set request_count = ai_rate_limits.request_count + 1
+  returning request_count into v_count;
+
+  if random() < 0.01 then
+    delete from ai_rate_limits
+    where window_start < v_now - interval '1 day';
+  end if;
+
+  if v_count <= p_limit then
+    return jsonb_build_object('allowed', true, 'retry_after_seconds', 0);
+  end if;
+
+  v_elapsed := greatest(0, (extract(epoch from v_now) - extract(epoch from v_window_start)))::int;
+  return jsonb_build_object(
+    'allowed', false,
+    'retry_after_seconds', greatest(1, p_window_seconds - v_elapsed)
+  );
+end;
+$$;
+
+revoke execute on function check_ai_rate_limit(text, int, int) from public;
+grant execute on function check_ai_rate_limit(text, int, int) to authenticated, service_role;
 
 -- =========================================================
 -- FIN DU SCHEMA

@@ -33,7 +33,7 @@ async function main() {
     process.exit(1);
   }
 
-  const email = process.argv[2];
+  const email = (process.argv[2] ?? "").trim().toLowerCase();
   const password = process.argv[3];
 
   if (!email || !password) {

@@ -79,13 +79,12 @@ export function LoginForm() {
             <label htmlFor="password" className="text-xs font-semibold text-foreground">
               Mot de passe
             </label>
-            <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
+            <Link
+              href="/forgot-password"
               className="text-xs font-semibold text-primary hover:text-primary/80 hover:underline underline-offset-2"
             >
               Mot de passe oublié ?
-            </a>
+            </Link>
           </div>
           <div className="relative">
             <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={17} />

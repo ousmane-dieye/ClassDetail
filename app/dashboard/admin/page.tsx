@@ -17,7 +17,6 @@ import {
   CheckSquare,
   Mail,
   Plus,
-  Trash2,
   UserCheck,
   UserX,
   Check,
@@ -32,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 
 export default async function AdminDashboard() {
   const supabase = createClient();
@@ -295,11 +295,15 @@ export default async function AdminDashboard() {
                         <span className="font-semibold text-foreground">{c.name}</span>
                         <span className="ml-1.5 text-xs text-muted-foreground">— {c.level} ({c.academic_year})</span>
                       </div>
-                      <form action={async () => { "use server"; await deleteClassAction(c.id); }}>
-                        <Button size="icon" variant="danger" className="h-7 w-7" title="Supprimer la classe">
-                          <Trash2 size={13} />
-                        </Button>
-                      </form>
+                      <ConfirmDeleteButton
+                        action={deleteClassAction}
+                        resourceId={c.id}
+                        resourceName={c.name}
+                        resourceLabel="cette classe"
+                        buttonTitle="Supprimer la classe"
+                        className="h-7 w-7"
+                        iconSize={13}
+                      />
                     </div>
                   ))}
                 </div>

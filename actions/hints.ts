@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { hintSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
+import { canDeleteResource } from "@/lib/business/permissions";
 import { notifyClassMembers } from "@/lib/notifications/service";
 
 export async function createHintAction(formData: FormData) {
@@ -54,6 +55,21 @@ export async function createHintAction(formData: FormData) {
 
 export async function deleteHintAction(id: string) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: profile } = await supabase.from("profiles").select("role, class_id").eq("id", user.id).single();
+  if (!profile) return { error: "Profil introuvable" };
+
+  const { data: hint } = await supabase.from("hints").select("class_id, author_id").eq("id", id).single();
+  if (!hint) return { error: "Hint introuvable" };
+
+  if (!canDeleteResource({ id: user.id, role: profile.role, classId: profile.class_id }, hint.class_id, hint.author_id)) {
+    return { error: "Vous n'êtes pas autorisé à supprimer ce hint" };
+  }
+
   const { error } = await supabase.from("hints").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/hints");

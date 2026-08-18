@@ -1,12 +1,51 @@
 import { createClient } from "@/lib/supabase/server";
 import { RegisterForm } from "@/components/RegisterForm";
+import { ResubmitForm } from "@/components/ResubmitForm";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { CS_IMAGES, SITE } from "@/lib/constants/images";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft, GraduationCap, Users, ShieldCheck, Zap } from "lucide-react";
 
 export default async function RegisterPage() {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Utilisateur connecté : `/register` devient l'écran de resoumission
+  // (F1). Un compte ACCEPTED ou ADMIN est renvoyé au dashboard ; un compte
+  // PENDING vers /pending. Seul un REJECTED (ou sans demande) voit le
+  // formulaire de nouvelle demande.
+  let canResubmit = false;
+  let initialFirstName = "";
+  let initialLastName = "";
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profile?.role === "ADMIN") redirect("/dashboard");
+    initialFirstName = profile?.first_name ?? "";
+    initialLastName = profile?.last_name ?? "";
+
+    const { data: latestRequest } = await supabase
+      .from("registration_requests")
+      .select("status")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (latestRequest?.status === "PENDING") redirect("/pending");
+    if (latestRequest?.status === "ACCEPTED") redirect("/dashboard");
+    // REJECTED ou aucune demande : resoumission autorisée.
+    canResubmit = true;
+  }
+
   const { data: classes } = await supabase
     .from("classes")
     .select("id, name, level, academic_year")
@@ -30,7 +69,15 @@ export default async function RegisterPage() {
         </div>
 
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-6">
-          <RegisterForm classes={classes ?? []} />
+          {canResubmit ? (
+            <ResubmitForm
+              classes={classes ?? []}
+              initialFirstName={initialFirstName}
+              initialLastName={initialLastName}
+            />
+          ) : (
+            <RegisterForm classes={classes ?? []} />
+          )}
         </div>
 
         <div className="px-6 pb-6 text-center text-xs text-muted-foreground">

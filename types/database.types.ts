@@ -180,6 +180,12 @@ export type AssistantMessageRow = {
 
 export type AssistantAction = { label: string; href: string };
 
+export type AiRateLimitResult = {
+  allowed: boolean;
+  /** Secondes restantes avant la prochaine fenêtre (si refusé). */
+  retry_after_seconds: number;
+};
+
 export type EmailNotificationRow = {
   id: string;
   assignment_id: string | null;
@@ -353,6 +359,15 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      check_ai_rate_limit: {
+        Args: {
+          p_bucket_key: string;
+          p_limit: number;
+          p_window_seconds: number;
+        };
+        Returns: AiRateLimitResult;
+      };
+    };
   };
 }

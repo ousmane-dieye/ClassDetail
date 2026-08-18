@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { createDocumentAction, deleteDocumentAction } from "@/actions/documents";
+import { canDeleteResource } from "@/lib/business/permissions";
 import { RealtimeListSync } from "@/components/RealtimeListSync";
 import { PageHeader } from "@/components/PageHeader";
-import { FileText, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { FileText, ExternalLink, Plus } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -17,7 +19,14 @@ export default async function DocumentsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile } = await supabase.from("profiles").select("class_id").eq("id", user!.id).single();
+  const { data: profile } = await supabase.from("profiles").select("class_id, role").eq("id", user!.id).single();
+
+  const canDelete = (d: { class_id: string; author_id: string }) =>
+    canDeleteResource(
+      { id: user!.id, role: profile?.role ?? "STUDENT", classId: profile?.class_id ?? null },
+      d.class_id,
+      d.author_id
+    );
 
   const { data: documents } = await supabase
     .from("documents")
@@ -57,7 +66,7 @@ export default async function DocumentsPage() {
               <form action={async (fd) => { "use server"; await createDocumentAction(fd); }} className="grid gap-4 md:grid-cols-2">
                 <input type="hidden" name="classId" value={profile!.class_id!} />
                 <Input name="title" placeholder="Titre du document (ex: Polycopié Chapitre 3 - TCP/IP)" required />
-                
+
                 <Select name="subjectId" required defaultValue="">
                   <option value="">Sélectionner une matière</option>
                   {(subjects ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -66,7 +75,7 @@ export default async function DocumentsPage() {
 
                 <Input name="driveUrl" placeholder="Lien Google Drive du fichier" required className="md:col-span-2" />
                 <Textarea name="description" placeholder="Description courte (optionnel)" className="md:col-span-2" />
-                
+
                 <Button type="submit" className="md:col-span-2 gap-2 h-11 text-base">
                   <Plus size={18} />
                   <span>Ajouter le document</span>
@@ -121,12 +130,16 @@ export default async function DocumentsPage() {
                       <ExternalLink size={12} />
                     </a>
 
-                    {d.author_id === user!.id && (
-                      <form action={async () => { "use server"; await deleteDocumentAction(d.id); }}>
-                        <Button size="icon" variant="danger" className="h-8 w-8" title="Supprimer le document">
-                          <Trash2 size={14} />
-                        </Button>
-                      </form>
+                    {canDelete(d) && (
+                      <ConfirmDeleteButton
+                        action={deleteDocumentAction}
+                        resourceId={d.id}
+                        resourceName={d.title}
+                        resourceLabel="ce document"
+                        buttonTitle="Supprimer le document"
+                        className="h-8 w-8"
+                        iconSize={14}
+                      />
                     )}
                   </div>
                 </div>

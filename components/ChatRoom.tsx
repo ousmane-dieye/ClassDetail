@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Megaphone, X, Send, Trash2 } from "lucide-react";
+import { Megaphone, X, Send, Trash2, ChevronUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { sendChatMessageAction, sendAnnouncementAction, deleteChatMessageAction } from "@/actions/chat";
+import { buildOlderMessagesFilter, mergeOlderMessages, CHAT_PAGE_SIZE } from "@/lib/chat/pagination";
 import type { ChatMessageRow } from "@/types/database.types";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -18,6 +19,7 @@ interface Props {
   canModerate: boolean;
   canPostAnnouncement: boolean;
   initialMessages: (ChatMessageRow & { author_name: string })[];
+  initialHasMore?: boolean;
 }
 
 type DisplayMessage = ChatMessageRow & { author_name: string; temp_id?: string };
@@ -28,8 +30,22 @@ function makeTempId() {
     : `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function ChatRoom({ classId, currentUserId, currentUserName, canModerate, canPostAnnouncement, initialMessages }: Props) {
+// F2 — Pagination par curseur (created_at + id) : charge les messages plus
+// anciens qu'un message donné, par lots de CHAT_PAGE_SIZE. L'ordre total
+// stable `created_at DESC, id DESC` garantit l'absence de doublons et de
+// pertes (voir lib/chat/pagination.ts).
+export function ChatRoom({
+  classId,
+  currentUserId,
+  currentUserName,
+  canModerate,
+  canPostAnnouncement,
+  initialMessages,
+  initialHasMore = false,
+}: Props) {
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [announceMode, setAnnounceMode] = useState(false);
   const [announceContent, setAnnounceContent] = useState("");
@@ -41,6 +57,42 @@ export function ChatRoom({ classId, currentUserId, currentUserName, canModerate,
   if (authorNamesRef.current === null) {
     authorNamesRef.current = new Map(initialMessages.map((m) => [m.author_id, m.author_name]));
   }
+
+  const loadOlder = async () => {
+    if (isLoadingOlder || !hasMore) return;
+    const oldest = messages[0];
+    if (!oldest) return;
+    setIsLoadingOlder(true);
+    try {
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .select("*, profiles(first_name, last_name)")
+        .eq("class_id", classId)
+        .or(buildOlderMessagesFilter({ createdAt: oldest.created_at, id: oldest.id }))
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(CHAT_PAGE_SIZE);
+
+      if (error) return;
+      const older = (data ?? [])
+        .map((m) => ({
+          ...m,
+          author_name: `${m.profiles?.first_name ?? ""} ${m.profiles?.last_name ?? ""}`.trim(),
+        }))
+        .reverse();
+
+      for (const m of older) {
+        if (!authorNamesRef.current?.has(m.author_id)) {
+          authorNamesRef.current?.set(m.author_id, m.author_name);
+        }
+      }
+
+      setMessages((prev) => mergeOlderMessages(prev, older, CHAT_PAGE_SIZE).merged);
+      setHasMore(older.length === CHAT_PAGE_SIZE);
+    } finally {
+      setIsLoadingOlder(false);
+    }
+  };
 
   useEffect(() => {
     const channel = supabase
@@ -166,6 +218,19 @@ export function ChatRoom({ classId, currentUserId, currentUserName, canModerate,
     <Card className="flex h-[72vh] flex-col overflow-hidden shadow-lift">
       {/* Zone des messages */}
       <div className="flex-1 space-y-3.5 overflow-y-auto p-4 sm:p-6 bg-card/40">
+        {hasMore && (
+          <div className="flex justify-center pb-1">
+            <button
+              type="button"
+              onClick={() => void loadOlder()}
+              disabled={isLoadingOlder}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ChevronUp size={14} />
+              <span>{isLoadingOlder ? "Chargement…" : "Charger les messages précédents"}</span>
+            </button>
+          </div>
+        )}
         {messages.map((m) => {
           const isAnnouncement = Boolean((m as ChatMessageRow).is_announcement);
           const isMine = m.author_id === currentUserId;

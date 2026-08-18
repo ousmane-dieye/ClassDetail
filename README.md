@@ -196,17 +196,17 @@ Pour une base **existante** déjà déployée avant la plateforme temps réel, e
 
 Tout est écrit pour être ré-exécutable sans erreur (`if not exists` / `drop policy if exists`).
 
-Puis créez votre premier utilisateur via `/register` et promouvez-le :
+Puis créez votre premier ADMIN (jamais automatiquement) :
 
-```sql
-update profiles set role = 'ADMIN' where email = 'votre.email@exemple.com';
+```bash
+node scripts/create-admin.mjs admin@classpulse.app "VotreMotDePasse"
 ```
 
 ## Auth Supabase
 
 1. L'utilisateur remplit prénom / nom / email / mot de passe / classe.
-2. `supabase.auth.signUp` crée le compte ; un profil `profiles` est créé (`STUDENT`), avec une ligne `registration_requests` (`PENDING`).
-3. Le premier utilisateur est automatiquement `ADMIN` (sinon personne ne pourrait valider les suivants).
+2. `supabase.auth.signUp` crée le compte ; un profil `profiles` est créé (`STUDENT`, sans classe), avec une ligne `registration_requests` (`PENDING`).
+3. **Aucun utilisateur ne devient ADMIN via l'inscription publique** (S4) : un ADMIN est créé explicitement par l'administrateur système (`scripts/create-admin.mjs` ou SQL via le service role). Les inscriptions simultanées suivent toutes le même workflow.
 4. Un `ADMIN`/`DELEGATE` accepte ou refuse (`decideRegistrationAction`) — décision définitive.
 5. Le layout `app/dashboard/layout.tsx` vérifie le statut de la dernière demande avant d'autoriser l'accès.
 

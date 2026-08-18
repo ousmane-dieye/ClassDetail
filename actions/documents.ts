@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { documentSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
+import { canDeleteResource } from "@/lib/business/permissions";
 import { notifyClassMembers } from "@/lib/notifications/service";
 
 export async function createDocumentAction(formData: FormData) {
@@ -52,6 +53,21 @@ export async function createDocumentAction(formData: FormData) {
 
 export async function deleteDocumentAction(id: string) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: profile } = await supabase.from("profiles").select("role, class_id").eq("id", user.id).single();
+  if (!profile) return { error: "Profil introuvable" };
+
+  const { data: doc } = await supabase.from("documents").select("class_id, author_id").eq("id", id).single();
+  if (!doc) return { error: "Document introuvable" };
+
+  if (!canDeleteResource({ id: user.id, role: profile.role, classId: profile.class_id }, doc.class_id, doc.author_id)) {
+    return { error: "Vous n'êtes pas autorisé à supprimer ce document" };
+  }
+
   const { error } = await supabase.from("documents").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/documents");

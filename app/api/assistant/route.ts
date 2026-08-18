@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assistantUserMessageSchema } from "@/lib/validation/schemas";
-import { checkRateLimit } from "@/lib/security/rateLimit";
+import { checkRateLimit, type RateLimitResult } from "@/lib/security/rateLimit";
 import { buildSystemPrompt, generateAssistantReply, type AssistantReply, type OpenAIChatMessage } from "@/lib/ai/openai";
 import { checkTopicGuard } from "@/lib/ai/guard";
 import type { ToolContext } from "@/lib/ai/tools";
@@ -21,11 +21,18 @@ function sse(chunk: unknown): string {
   return `data: ${JSON.stringify(chunk)}\n\n`;
 }
 
-function badRequest(message: string): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status: 400,
-    headers: { "Content-Type": "application/json" },
-  });
+function badRequest(message: string, retryAfterSeconds?: number): Response {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (retryAfterSeconds !== undefined) headers["Retry-After"] = String(retryAfterSeconds);
+  return new Response(JSON.stringify({ error: message }), { status: 400, headers });
+}
+
+/** Refus de rate limiting propre : message distinct si infra indisponible + Retry-After. */
+function rateLimited(res: RateLimitResult, limitMessage: string): Response {
+  return badRequest(
+    res.unavailable ? "Service de sécurité momentanément indisponible, réessayez dans un instant." : limitMessage,
+    res.retryAfterMs ? Math.ceil(res.retryAfterMs / 1000) : undefined
+  );
 }
 
 /**
@@ -42,14 +49,14 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return new Response(JSON.stringify({ error: "Non authentifié" }), { status: 401 });
 
-  // Rate limiting (clé API non exposée ; anti-spam).
-  const hourly = checkRateLimit(`assistant:${user.id}`, HOURLY_LIMIT, HOURLY_WINDOW);
-  if (!hourly.allowed) return badRequest("Limite de messages IA atteinte, réessayez plus tard.");
-  const perMin = checkRateLimit(`assistant:m:${user.id}`, MINUTE_LIMIT, MINUTE_WINDOW);
-  if (!perMin.allowed) return badRequest("Vous envoyez trop de messages à l'assistant, patientez un instant.");
-  const daily = checkRateLimit(`assistant:d:${user.id}`, DAILY_LIMIT, DAILY_WINDOW);
+  // Rate limiting distribué (Supabase) : compteurs partagés entre instances.
+  const hourly = await checkRateLimit(supabase, `assistant:${user.id}`, HOURLY_LIMIT, HOURLY_WINDOW);
+  if (!hourly.allowed) return rateLimited(hourly, "Limite de messages IA atteinte, réessayez plus tard.");
+  const perMin = await checkRateLimit(supabase, `assistant:m:${user.id}`, MINUTE_LIMIT, MINUTE_WINDOW);
+  if (!perMin.allowed) return rateLimited(perMin, "Vous envoyez trop de messages à l'assistant, patientez un instant.");
+  const daily = await checkRateLimit(supabase, `assistant:d:${user.id}`, DAILY_LIMIT, DAILY_WINDOW);
   if (!daily.allowed) {
-    return badRequest(`Vous avez atteint la limite de ${DAILY_LIMIT} questions par jour. Réessayez demain.`);
+    return rateLimited(daily, `Vous avez atteint la limite de ${DAILY_LIMIT} questions par jour. Réessayez demain.`);
   }
 
   let body: unknown;

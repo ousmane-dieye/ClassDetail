@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { canViewClassStats } from "@/lib/business/permissions";
 import { PageHeader } from "@/components/PageHeader";
 import { BarChart3, Users, CheckSquare, FileText, Lightbulb, Video, Award, Percent } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
@@ -19,8 +21,12 @@ export default async function StatsPage() {
   } = await supabase.auth.getUser();
   const { data: profile } = await supabase.from("profiles").select("class_id, role").eq("id", user!.id).single();
 
-  const isAdmin = profile?.role === "ADMIN";
   const classId = profile?.class_id ?? "";
+  if (!profile || !canViewClassStats({ id: user!.id, role: profile.role, classId: profile.class_id }, classId)) {
+    redirect("/dashboard");
+  }
+
+  const isAdmin = profile.role === "ADMIN";
   const scope = isAdmin ? {} : { class_id: classId };
 
   const [

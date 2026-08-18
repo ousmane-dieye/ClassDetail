@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { loginSchema, registerSchema } from "@/lib/validation/schemas";
+import { loginSchema, registerSchema, resubmitSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validation/schemas";
 import { createNotification } from "@/lib/notifications/service";
 import { handleRegistrationDecisionEmail } from "@/lib/email/notifications";
 import { redirect } from "next/navigation";
@@ -24,6 +24,21 @@ export async function registerAction(formData: FormData) {
 
   const { firstName, lastName, email, password, classId } = parsed.data;
   const supabase = createClient();
+  const admin = createAdminClient();
+
+  // 0. Unicité de l'email : vérification explicite AVANT de créer le compte.
+  //    signUp() peut retourner un utilisateur existant sans erreur (protection
+  //    anti-énumération), et la contrainte DB est sensible à la casse — d'où
+  //    ce contrôle appliqué sur l'email normalisé (minuscules).
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existingProfile) {
+    return { error: "Cette adresse email est déjà utilisée. Connectez-vous pour soumettre une nouvelle demande." };
+  }
 
   // 1. Création du compte Supabase Auth
   const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -35,49 +50,162 @@ export async function registerAction(formData: FormData) {
     return { error: authError?.message ?? "Erreur lors de la création du compte" };
   }
 
-  // 2. Premier utilisateur de l'app ? -> ADMIN automatique, compte directement
-  //    validé (sinon personne ne pourrait jamais valider la toute première
-  //    inscription). Les utilisateurs suivants restent STUDENT en attente
-  //    de validation par un ADMIN ou un DELEGATE.
-  const admin = createAdminClient();
-  const { count: adminCount } = await admin
+  // Garde-fou : si signUp a renvoyé un compte existant (email déjà pris mais
+  // absent de profiles, ex. compte Auth orphelin), on ne crée pas de profil.
+  const { data: authExisting } = await admin
     .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .eq("role", "ADMIN");
-  const isFirstUser = adminCount === 0;
+    .select("id")
+    .eq("id", authData.user.id)
+    .maybeSingle();
 
-  // Sécurité : un compte en attente n'a PAS de class_id — il n'est rattaché à
-  // sa classe qu'au moment de l'acceptation (decideRegistrationAction). Un
-  // utilisateur PENDING ne passe aucune policy RLS basée sur is_member_of.
+  if (authExisting) {
+    return { error: "Cette adresse email est déjà utilisée. Connectez-vous pour soumettre une nouvelle demande." };
+  }
+
+  // 2. TOUT nouvel utilisateur passe par le workflow normal (S4) :
+  //    - rôle STUDENT (jamais ADMIN automatiquement) ;
+  //    - class_id NULL (un compte en attente n'a pas de classe ; il n'est
+  //      rattaché à sa classe qu'à l'acceptation — decideRegistrationAction).
+  //      Un utilisateur PENDING ne passe aucune policy RLS basée sur
+  //      is_member_of ;
+  //    - demande d'inscription PENDING (aucune exception « premier utilisateur »).
+  //    La création d'un ADMIN est un acte EXPLICITE de l'administrateur
+  //    système (scripts/create-admin.mjs ou SQL via le service role) — jamais
+  //    dérivé de l'inscription publique.
   const { error: profileError } = await admin.from("profiles").insert({
     id: authData.user.id,
     first_name: firstName,
     last_name: lastName,
     email,
-    role: isFirstUser ? "ADMIN" : "STUDENT",
-    class_id: isFirstUser ? classId : null,
+    role: "STUDENT",
+    class_id: null,
   });
 
   if (profileError) {
+    // 23505 = violation de contrainte unique (race condition : deux
+    // inscriptions simultanées avec le même email).
+    if (profileError.code === "23505") {
+      return { error: "Cette adresse email est déjà utilisée." };
+    }
     return { error: "Erreur lors de la création du profil : " + profileError.message };
   }
 
-  if (!isFirstUser) {
-    // 3. Demande d'inscription PENDING (sauf pour le tout premier ADMIN)
-    const { error: reqError } = await admin.from("registration_requests").insert({
-      user_id: authData.user.id,
-      class_id: classId,
-      status: "PENDING",
-    });
+  // 3. Demande d'inscription PENDING (s'applique à tous, sans exception).
+  const { error: reqError } = await admin.from("registration_requests").insert({
+    user_id: authData.user.id,
+    class_id: classId,
+    status: "PENDING",
+  });
 
-    if (reqError) {
-      return { error: "Erreur lors de la demande d'inscription : " + reqError.message };
-    }
-
-    redirect("/pending");
+  if (reqError) {
+    return { error: "Erreur lors de la demande d'inscription : " + reqError.message };
   }
 
-  redirect("/dashboard");
+  redirect("/pending");
+}
+
+/**
+ * F1 — Resoumission d'une demande après REJECTED (correction F1).
+ *
+ * Un utilisateur dont la dernière demande a été REJECTED peut soumettre une
+ * NOUVELLE demande (sans créer de second compte Auth) :
+ *   1. il est authentifié (session existante) ;
+ *   2. sa demande la plus récente est REJECTED (ou il n'en a aucune) ;
+ *   3. il choisit (à nouveau) sa classe ;
+ *   4. une nouvelle ligne `registration_requests` PENDING est créée, les
+ *      anciennes restent historisées ;
+ *   5. le workflow redevient REJECTED -> PENDING -> validation -> ACCEPTED.
+ *
+ * GARANTIES SÉCURITÉ :
+ *   - Compte déjà ACCEPTED : refus (décision définitive, aucun contournement).
+ *   - Demande déjà PENDING : refus (le workflow reste 1 seule demande active ;
+ *     l'index partiel uq_regreq_pending_per_user verrouille côté base).
+ *   - Un ADMIN ne passe jamais par une demande d'inscription.
+ *   - Le rôle reste STUDENT (S4) ; un REJECTED ne récupère aucun droit tant
+ *     qu'aucune validation ACCEPTED n'existe (is_approved_member).
+ */
+export async function resubmitRegistrationAction(formData: FormData) {
+  const parsed = resubmitSchema.safeParse({
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    classId: formData.get("classId"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide" };
+  }
+
+  const { firstName, lastName, classId } = parsed.data;
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "Veuillez vous connecter pour soumettre une nouvelle demande." };
+  }
+
+  const admin = createAdminClient();
+
+  // Le profil doit exister (toujours un seul profil par utilisateur).
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    return { error: "Profil introuvable. Recontactez un administrateur." };
+  }
+
+  // Un ADMIN n'a pas de workflow d'inscription (S4).
+  if (profile.role === "ADMIN") {
+    return { error: "Votre compte administrateur est déjà actif." };
+  }
+
+  // Historique des demandes (les anciennes restent consultables) :
+  // - un ACCEPTED est définitif -> aucune resoumission possible ;
+  // - une demande active PENDING -> aucune double demande possible.
+  const { data: requests } = await admin
+    .from("registration_requests")
+    .select("id, status")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (requests?.some((r) => r.status === "ACCEPTED")) {
+    return { error: "Votre compte est déjà validé. Vous n'avez pas besoin de soumettre une nouvelle demande." };
+  }
+  if (requests?.some((r) => r.status === "PENDING")) {
+    return { error: "Une demande est déjà en attente de validation." };
+  }
+
+  // Mise à jour du profil (prénom/nom) puis nouvelle demande PENDING.
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ first_name: firstName, last_name: lastName })
+    .eq("id", user.id);
+
+  if (profileError) {
+    return { error: "Erreur lors de la mise à jour du profil : " + profileError.message };
+  }
+
+  const { error: reqError } = await admin.from("registration_requests").insert({
+    user_id: user.id,
+    class_id: classId,
+    status: "PENDING",
+  });
+
+  if (reqError) {
+    // 23505 = unique (déjà une demande PENDING) ; 23503 = classe inexistante.
+    if (reqError.code === "23505") {
+      return { error: "Une demande est déjà en attente de validation." };
+    }
+    if (reqError.code === "23503") {
+      return { error: "Cette classe n'existe pas." };
+    }
+    return { error: "Erreur lors de la nouvelle demande : " + reqError.message };
+  }
+
+  redirect("/pending");
 }
 
 export async function loginAction(formData: FormData) {
@@ -99,6 +227,75 @@ export async function loginAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   redirect("/dashboard");
+}
+
+/**
+ * F3 — Demande de réinitialisation du mot de passe (étape 1).
+ *
+ * Déclenche l'envoi d'un email de récupération par Supabase Auth (mécanisme
+ * officiel, SMTP configuré côté Supabase). Le lien pointe vers
+ * /auth/confirm?next=/reset-password, qui échange le token puis affiche le
+ * formulaire de nouveau mot de passe.
+ *
+ * SÉCURITÉ : le message retourné est TOUJOURS neutre (aucune révélation sur
+ * l'existence du compte) et le résultat de l'API est ignoré côté client.
+ */
+export async function requestPasswordResetAction(formData: FormData) {
+  const parsed = forgotPasswordSchema.safeParse({
+    email: formData.get("email"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Email invalide" };
+  }
+
+  const supabase = createClient();
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  // L'erreur réelle (compte inexistant, limite de débit, SMTP indisponible)
+  // est ignorée : on répond toujours de façon identique pour ne pas permettre
+  // l'énumération des comptes.
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+  });
+
+  return { success: true };
+}
+
+/**
+ * F3 — Mise à jour du mot de passe (étape 3, page /reset-password).
+ *
+ * Le formulaire n'est accessible qu'avec une session valide (créée par
+ * l'échange du lien de récupération dans /auth/confirm). updateUser modifie le
+ * mot de passe de l'utilisateur connecté uniquement. Après succès, la session
+ * est fermée et l'utilisateur doit se reconnecter avec son nouveau mot de
+ * passe (fin du parcours LOGIN -> reset -> connexion).
+ */
+export async function updatePasswordAction(formData: FormData) {
+  const parsed = resetPasswordSchema.safeParse({
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide" };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "Session invalide ou expirée. Relancez la procédure de récupération." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) {
+    return { error: error.message };
+  }
+
+  await supabase.auth.signOut();
+  redirect("/login");
 }
 
 export async function logoutAction() {

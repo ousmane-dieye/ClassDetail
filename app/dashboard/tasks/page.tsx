@@ -126,7 +126,7 @@ export default async function TasksPage() {
 
 
                   <Input name="dueDate" type="datetime-local" required />
-                  <Input name="attachmentLink" placeholder="Lien Google Drive (optionnel)" className="md:col-span-2" />
+                  <Input name="attachmentLink" placeholder="Lien de la ressource (optionnel : Google Drive, OneDrive, GitHub...)" className="md:col-span-2" />
                   <Textarea name="description" placeholder="Consignes et détails de la tâche..." className="md:col-span-2" />
 
                   <Button type="submit" className="md:col-span-2 gap-2 h-11 text-base">
@@ -179,7 +179,8 @@ export default async function TasksPage() {
                               ))}
                             </Select>
                             <Input name="dueDate" type="datetime-local" defaultValue={toDateTimeLocal(t.due_date)} required />
-                            <Input name="attachmentLink" defaultValue={t.attachment_link ?? ""} placeholder="Lien Drive" className="md:col-span-2" />
+                            <Input name="attachmentLink" defaultValue={t.attachment_link ?? ""} placeholder="Lien de la ressource (Google Drive, OneDrive, GitHub...)" className="md:col-span-2" />
+
                             <Textarea name="description" defaultValue={t.description ?? ""} placeholder="Description" className="md:col-span-2" />
                             <Button type="submit" className="md:col-span-2">Enregistrer les modifications</Button>
                           </form>

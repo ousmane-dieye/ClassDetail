@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { createHintAction, deleteHintAction } from "@/actions/hints";
+import { canDeleteResource } from "@/lib/business/permissions";
 import { RealtimeListSync } from "@/components/RealtimeListSync";
 import { PageHeader } from "@/components/PageHeader";
-import { Lightbulb, ExternalLink, Plus, Trash2, Calendar } from "lucide-react";
+import { Lightbulb, ExternalLink, Plus, Calendar } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -16,7 +18,14 @@ export default async function HintsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile } = await supabase.from("profiles").select("class_id").eq("id", user!.id).single();
+  const { data: profile } = await supabase.from("profiles").select("class_id, role").eq("id", user!.id).single();
+
+  const canDelete = (h: { class_id: string; author_id: string }) =>
+    canDeleteResource(
+      { id: user!.id, role: profile?.role ?? "STUDENT", classId: profile?.class_id ?? null },
+      h.class_id,
+      h.author_id
+    );
 
   const { data: hints } = await supabase
     .from("hints")
@@ -56,14 +65,14 @@ export default async function HintsPage() {
               <form action={async (fd) => { "use server"; await createHintAction(fd); }} className="grid gap-4 md:grid-cols-2">
                 <input type="hidden" name="classId" value={profile!.class_id!} />
                 <Input name="title" placeholder="Titre du sujet (ex: Examen Final Systèmes d'Exploitation)" required />
-                
+
                 <Select name="subjectId" required defaultValue="">
                   <option value="">Sélectionner une matière</option>
                   {(subjects ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </Select>
 
                 <Input name="year" placeholder="Année académique (ex: 2024-2025)" required />
-                
+
                 <Select name="type" required defaultValue="">
                   <option value="">Sélectionner le type (ex: Examen, Devoir...)</option>
                   {["DEVOIR", "EXAMEN", "CONTROLE", "TP", "PROJET", "AUTRE"].map((t) => (
@@ -73,7 +82,7 @@ export default async function HintsPage() {
 
 
                 <Input name="driveUrl" placeholder="Lien Google Drive du sujet / corrigé" required className="md:col-span-2" />
-                
+
                 <Button type="submit" variant="default" className="md:col-span-2 gap-2 h-11 text-base">
                   <Plus size={18} />
                   <span>Publier le Hint</span>
@@ -127,12 +136,16 @@ export default async function HintsPage() {
                       <ExternalLink size={12} />
                     </a>
 
-                    {h.author_id === user!.id && (
-                      <form action={async () => { "use server"; await deleteHintAction(h.id); }}>
-                        <Button size="icon" variant="danger" className="h-8 w-8" title="Supprimer le Hint">
-                          <Trash2 size={14} />
-                        </Button>
-                      </form>
+                    {canDelete(h) && (
+                      <ConfirmDeleteButton
+                        action={deleteHintAction}
+                        resourceId={h.id}
+                        resourceName={h.title}
+                        resourceLabel="ce hint"
+                        buttonTitle="Supprimer le Hint"
+                        className="h-8 w-8"
+                        iconSize={14}
+                      />
                     )}
                   </div>
                 </div>

@@ -30,7 +30,8 @@ export async function middleware(request: NextRequest) {
   const isDashboard = request.nextUrl.pathname.startsWith("/dashboard");
   const isAuthPage =
     request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/register");
+    request.nextUrl.pathname.startsWith("/register") ||
+    request.nextUrl.pathname.startsWith("/forgot-password");
 
   if (isDashboard && !user) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -44,5 +45,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/login", "/register", "/forgot-password"],
 };

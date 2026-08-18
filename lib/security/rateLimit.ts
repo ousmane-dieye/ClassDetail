@@ -1,37 +1,47 @@
 /**
- * Rate limiting simple en mémoire (fenêtre glissante par clé).
+ * Rate limiting distribué via Supabase (table ai_rate_limits + fonction SQL
+ * atomique `check_ai_rate_limit`).
  *
- * ⚠️ Limite : fonctionne sur une instance unique. Pour un déploiement multi-régions,
- * remplacer par une implémentation Redis/Upstash (même interface).
- * Utilisé pour : messages, assistant IA.
+ * Toutes les instances partagent le même état Postgres : le compteur ne peut
+ * pas être contourné en changeant d'instance (serverless / multi-région).
+ * Fenêtre FIXE : le début de fenêtre est calculé côté SQL (identique pour
+ * toutes les instances), l'incrément est atomique (verrou de ligne).
+ *
+ * En cas d'échec d'infrastructure (fonction/table absente, réseau), la
+ * requête est REFUSÉE (fail-closed) pour protéger le coût de l'API IA :
+ * `unavailable: true` permet d'afficher un message distinct.
  */
 
-const buckets = new Map<string, { count: number; resetAt: number }>();
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 
 export interface RateLimitResult {
   allowed: boolean;
   /** Millisecondes restantes avant réinitialisation (si refusé). */
   retryAfterMs?: number;
+  /** true si l'infrastructure de limitation était indisponible (fail-closed). */
+  unavailable?: boolean;
 }
 
-export function checkRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
-  const now = Date.now();
-  const bucket = buckets.get(key);
+export async function checkRateLimit(
+  supabase: SupabaseClient<Database>,
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  const { data, error } = await supabase.rpc("check_ai_rate_limit", {
+    p_bucket_key: key,
+    p_limit: limit,
+    p_window_seconds: Math.max(1, Math.round(windowMs / 1000)),
+  });
 
-  if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true };
+  if (error || !data || typeof data.allowed !== "boolean") {
+    console.error(`Rate limit : RPC indisponible (%s) — requête refusée (fail-closed) :`, key, error?.message);
+    return { allowed: false, retryAfterMs: 60_000, unavailable: true };
   }
 
-  if (bucket.count >= limit) {
-    return { allowed: false, retryAfterMs: bucket.resetAt - now };
-  }
-
-  bucket.count += 1;
-  return { allowed: true };
-}
-
-/** Nettoie l'état (tests / restart). */
-export function clearRateLimits(): void {
-  buckets.clear();
+  return {
+    allowed: data.allowed,
+    retryAfterMs: data.allowed ? undefined : (data.retry_after_seconds ?? 0) * 1000,
+  };
 }
