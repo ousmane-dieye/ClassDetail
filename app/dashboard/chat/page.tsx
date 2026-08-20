@@ -20,18 +20,20 @@ export default async function ChatPage() {
   // anciens sont chargés progressivement côté client (curseur created_at + id).
   const classId = profile?.class_id ?? "";
 
-  const { data: messages } = await supabase
-    .from("chat_messages")
-    .select("*, profiles(first_name, last_name)")
-    .eq("class_id", classId)
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(CHAT_INITIAL_PAGE_SIZE);
-
-  const { count } = await supabase
-    .from("chat_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("class_id", classId);
+  // 2 requêtes indépendantes → parallélisées
+  const [{ data: messages }, { count }] = await Promise.all([
+    supabase
+      .from("chat_messages")
+      .select("id, class_id, author_id, content, is_announcement, created_at, profiles(first_name, last_name)")
+      .eq("class_id", classId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(CHAT_INITIAL_PAGE_SIZE),
+    supabase
+      .from("chat_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classId),
+  ]);
 
   const formatted = (messages ?? [])
     .map((m: any) => ({

@@ -15,33 +15,35 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect("/login");
 
-  // Sécurité S1 : ne jamais sélectionner `email` via le client authenticated
-  // (colonne réservée au service role). Sélection explicite des colonnes.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("first_name, last_name, role")
-    .eq("id", user.id)
-    .single();
+  // 3 requêtes indépendantes → parallélisées
+  const [profileResult, latestRequestResult, unreadResult] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("first_name, last_name, role")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("registration_requests")
+      .select("status")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single(),
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", user.id)
+      .is("read_at", null),
+  ]);
+
+  const profile = profileResult.data;
+  const latestRequest = latestRequestResult.data;
+  const unreadCount = unreadResult.count;
 
   if (!profile) redirect("/login");
 
-  // Bloque l'accès tant que la demande d'inscription n'est pas ACCEPTED.
-  const { data: latestRequest } = await supabase
-    .from("registration_requests")
-    .select("status")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
   if (latestRequest?.status === "PENDING") redirect("/pending");
   if (latestRequest?.status === "REJECTED") redirect("/register");
-
-  const { count: unreadCount } = await supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .eq("recipient_id", user.id)
-    .is("read_at", null);
 
   const initials = `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}`.toUpperCase() || "U";
   const roleLabel =

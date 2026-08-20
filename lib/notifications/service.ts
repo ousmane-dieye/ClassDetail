@@ -87,12 +87,33 @@ export async function notifyClassMembers(input: Omit<CreateNotificationInput, "u
     .select("id")
     .eq("class_id", classId);
 
-  let created = 0;
-  for (const member of members ?? []) {
-    if (excludeUserId && member.id === excludeUserId) continue;
-    const res = await createNotification({ ...notification, userId: member.id });
-    if (res) created++;
+  const recipients = (members ?? [])
+    .filter((m) => !excludeUserId || m.id !== excludeUserId)
+    .map((m) => m.id);
+
+  if (recipients.length === 0) return 0;
+
+  const category = notification.category ?? notificationCategoryOf(notification.type);
+
+  const rows = recipients.map((userId) => ({
+    recipient_id: userId,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    entity_type: notification.entityType ?? null,
+    entity_id: notification.entityId ?? null,
+    link: notification.link ?? null,
+    category,
+  }));
+
+  const { error } = await createAdminClient()
+    .from("notifications")
+    .insert(rows);
+
+  if (error) {
+    console.error("NotificationService : batch insert failed for class %s: %s", classId, error.message);
+    return 0;
   }
-  return created;
+  return recipients.length;
 }
 

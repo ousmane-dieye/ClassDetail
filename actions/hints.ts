@@ -60,10 +60,12 @@ export async function deleteHintAction(id: string) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
-  const { data: profile } = await supabase.from("profiles").select("role, class_id").eq("id", user.id).single();
+  // 2 queries indépendantes → parallélisées
+  const [{ data: profile }, { data: hint }] = await Promise.all([
+    supabase.from("profiles").select("role, class_id").eq("id", user.id).single(),
+    supabase.from("hints").select("class_id, author_id").eq("id", id).single(),
+  ]);
   if (!profile) return { error: "Profil introuvable" };
-
-  const { data: hint } = await supabase.from("hints").select("class_id, author_id").eq("id", id).single();
   if (!hint) return { error: "Hint introuvable" };
 
   if (!canDeleteResource({ id: user.id, role: profile.role, classId: profile.class_id }, hint.class_id, hint.author_id)) {

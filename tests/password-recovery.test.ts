@@ -198,7 +198,7 @@ describe("updatePasswordAction — étape 3 (nouveau mot de passe)", () => {
   it("mot de passe trop court : erreur de validation", async () => {
     state.user = { id: "u-1" };
     const result = await updatePasswordAction(RESET_PASSWORD({ password: "court", confirmPassword: "court" }));
-    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("8 caractères") }));
+    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("12 caractères") }));
     expect(state.updateCalled).toBeNull();
   });
 });

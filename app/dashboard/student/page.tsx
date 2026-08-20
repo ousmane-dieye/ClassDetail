@@ -28,26 +28,30 @@ export default async function StudentDashboard() {
     .eq("id", user!.id)
     .single();
 
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("class_id", profile?.class_id ?? "")
-    .eq("is_expired", false)
-    .order("due_date", { ascending: true })
-    .limit(6);
+  const classId = profile?.class_id ?? "";
 
-  const { data: completions } = await supabase
-    .from("task_completions")
-    .select("task_id")
-    .eq("student_id", user!.id);
+  // 3 requêtes indépendantes après profile → parallélisées
+  const [{ data: tasks }, { data: completions }, { data: recentDocs }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, type, due_date, class_id, subject_id, is_expired, description, attachment_link")
+      .eq("class_id", classId)
+      .eq("is_expired", false)
+      .order("due_date", { ascending: true })
+      .limit(6),
+    supabase
+      .from("task_completions")
+      .select("task_id")
+      .eq("student_id", user!.id),
+    supabase
+      .from("documents")
+      .select("id, title, drive_url, created_at")
+      .eq("class_id", classId)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
+
   const completedIds = new Set((completions ?? []).map((c) => c.task_id));
-
-  const { data: recentDocs } = await supabase
-    .from("documents")
-    .select("id, title, drive_url, created_at")
-    .eq("class_id", profile?.class_id ?? "")
-    .order("created_at", { ascending: false })
-    .limit(5);
 
   const allTasks = tasks ?? [];
   const pendingTasks = allTasks.filter((t) => !completedIds.has(t.id));

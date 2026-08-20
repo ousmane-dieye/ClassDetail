@@ -27,13 +27,17 @@ export default async function HintsPage() {
       h.author_id
     );
 
-  const { data: hints } = await supabase
-    .from("hints")
-    .select("*")
-    .eq("class_id", profile?.class_id ?? "")
-    .order("year", { ascending: false });
+  const classId = profile?.class_id ?? "";
 
-  const { data: subjects } = await supabase.from("subjects").select("id, name").eq("class_id", profile?.class_id ?? "");
+  // 2 requêtes indépendantes → parallélisées
+  const [{ data: hints }, { data: subjects }] = await Promise.all([
+    supabase
+      .from("hints")
+      .select("id, title, year, type, drive_url, class_id, author_id, created_at")
+      .eq("class_id", classId)
+      .order("year", { ascending: false }),
+    supabase.from("subjects").select("id, name").eq("class_id", classId),
+  ]);
 
   return (
     <div className="space-y-8 animate-fade-in">

@@ -58,10 +58,12 @@ export async function deleteDocumentAction(id: string) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
-  const { data: profile } = await supabase.from("profiles").select("role, class_id").eq("id", user.id).single();
+  // 2 queries indépendantes → parallélisées
+  const [{ data: profile }, { data: doc }] = await Promise.all([
+    supabase.from("profiles").select("role, class_id").eq("id", user.id).single(),
+    supabase.from("documents").select("class_id, author_id").eq("id", id).single(),
+  ]);
   if (!profile) return { error: "Profil introuvable" };
-
-  const { data: doc } = await supabase.from("documents").select("class_id, author_id").eq("id", id).single();
   if (!doc) return { error: "Document introuvable" };
 
   if (!canDeleteResource({ id: user.id, role: profile.role, classId: profile.class_id }, doc.class_id, doc.author_id)) {

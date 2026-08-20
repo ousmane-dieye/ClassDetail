@@ -5,7 +5,7 @@ export const registerSchema = z
     firstName: z.string().trim().min(2, "Prénom trop court").max(80),
     lastName: z.string().trim().min(2, "Nom trop court").max(80),
     email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
-    password: z.string().min(8, "8 caractères minimum"),
+    password: z.string().min(12, "12 caractères minimum"),
     confirmPassword: z.string(),
     classId: z.string().uuid("Veuillez sélectionner une classe"),
   })
@@ -32,7 +32,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z
   .object({
-    password: z.string().min(8, "8 caractères minimum"),
+    password: z.string().min(12, "12 caractères minimum"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {

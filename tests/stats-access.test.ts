@@ -44,6 +44,15 @@ vi.mock("@/lib/supabase/server", () => ({
               return makeChain(() => ({ count: state.counts[table] ?? 0, error: null }));
             }
             if (cols.includes("tasks")) {
+              // task_completions with tasks!inner join
+              return makeChain(() => ({ data: [], error: null }));
+            }
+            if (cols === "class_id" && table === "profiles") {
+              // Bulk query: studentRows for admin per-class stats
+              return makeChain(() => ({ data: [], error: null }));
+            }
+            if (cols === "class_id" && table === "tasks") {
+              // Bulk query: taskRows for admin per-class stats
               return makeChain(() => ({ data: [], error: null }));
             }
             if (cols.includes("name")) {

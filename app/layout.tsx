@@ -1,22 +1,17 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
 const sansFont = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
+  preload: true,
 });
 
 const displayFont = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-display",
-  display: "swap",
-});
-
-const monoFont = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
   display: "swap",
 });
 
@@ -36,8 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="fr"
-      className={`${sansFont.variable} ${displayFont.variable} ${monoFont.variable}`}
+      className={`${sansFont.variable} ${displayFont.variable}`}
       suppressHydrationWarning
+      style={{ "--font-mono": "'Cascadia Code', 'Fira Code', ui-monospace, monospace" } as React.CSSProperties}
     >
       <body className="min-h-screen font-sans bg-background text-foreground antialiased">
         {children}

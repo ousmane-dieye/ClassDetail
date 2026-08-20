@@ -29,44 +29,47 @@ export default async function TasksPage() {
   const { data: profile } = await supabase.from("profiles").select("class_id, role").eq("id", user!.id).single();
 
   const classId = profile?.class_id ?? "";
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("class_id", classId)
-    .order("due_date", { ascending: true });
+  const canManage = profile?.role === "ADMIN" || profile?.role === "DELEGATE";
 
-  const { data: subjects } = await supabase
-    .from("subjects")
-    .select("id, name")
-    .eq("class_id", classId);
-
-  const { data: myCompletions } = await supabase
-    .from("task_completions")
-    .select("task_id")
-    .eq("student_id", user!.id);
+  // 3 requêtes indépendantes après profile → parallélisées
+  const [{ data: tasks }, { data: subjects }, { data: myCompletions }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, type, due_date, class_id, subject_id, description, attachment_link, is_expired, created_at")
+      .eq("class_id", classId)
+      .order("due_date", { ascending: true }),
+    supabase
+      .from("subjects")
+      .select("id, name")
+      .eq("class_id", classId),
+    supabase
+      .from("task_completions")
+      .select("task_id")
+      .eq("student_id", user!.id),
+  ]);
   const completedIds = new Set((myCompletions ?? []).map((c) => c.task_id));
 
-  const canManage = profile?.role === "ADMIN" || profile?.role === "DELEGATE";
   const taskIds = (tasks ?? []).map((t) => t.id);
 
   let classStudents: any[] = [];
   let allCompletions: any[] = [];
 
   if (canManage) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, first_name, last_name")
-      .eq("class_id", classId)
-      .in("role", ["STUDENT", "DELEGATE"]);
-    classStudents = (data ?? []) as any[];
-  }
-
-  if (canManage && taskIds.length > 0) {
-    const { data } = await supabase
-      .from("task_completions")
-      .select("task_id, student_id")
-      .in("task_id", taskIds);
-    allCompletions = (data ?? []) as any[];
+    const [{ data: studentsData }, { data: completionsData }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, first_name, last_name")
+        .eq("class_id", classId)
+        .in("role", ["STUDENT", "DELEGATE"]),
+      taskIds.length > 0
+        ? supabase
+            .from("task_completions")
+            .select("task_id, student_id")
+            .in("task_id", taskIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    classStudents = (studentsData ?? []) as any[];
+    allCompletions = (completionsData ?? []) as any[];
   }
 
   const completionsByTask = new Map<string, Set<string>>();

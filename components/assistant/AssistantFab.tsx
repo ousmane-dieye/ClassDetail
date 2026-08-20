@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, X } from "lucide-react";
-import { AssistantPanel } from "./AssistantPanel";
+import { useState, lazy, Suspense } from "react";
+import { Sparkles } from "lucide-react";
+
+const AssistantPanel = lazy(() => import("./AssistantPanel").then((m) => ({ default: m.AssistantPanel })));
 
 export function AssistantFab() {
   const [open, setOpen] = useState(false);
@@ -23,7 +24,11 @@ export function AssistantFab() {
         </button>
       )}
 
-      {open && <AssistantPanel onClose={() => setOpen(false)} />}
+      {open && (
+        <Suspense fallback={null}>
+          <AssistantPanel onClose={() => setOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }

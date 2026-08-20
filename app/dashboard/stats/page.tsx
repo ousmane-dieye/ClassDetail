@@ -56,23 +56,42 @@ export default async function StatsPage() {
   let perClass: ClassAggregate[] = [];
   if (isAdmin) {
     const { data: classes } = await supabase.from("classes").select("id, name").order("name");
-    perClass = await Promise.all(
-      (classes ?? []).map(async (c) => {
-        const [{ count: students }, { count: tasks }, { data: completions }] = await Promise.all([
-          supabase.from("profiles").select("id", { count: "exact", head: true }).eq("class_id", c.id).eq("role", "STUDENT"),
-          supabase.from("tasks").select("id", { count: "exact", head: true }).eq("class_id", c.id),
-          supabase.from("task_completions").select("task_id, tasks!inner(class_id)").eq("tasks.class_id", c.id),
-        ]);
-        const max = (tasks ?? 0) * (students ?? 0);
-        return {
-          className: c.name,
-          students: students ?? 0,
-          tasks: tasks ?? 0,
-          completions: completions?.length ?? 0,
-          completionRate: max > 0 ? Math.round(((completions?.length ?? 0) / max) * 100) : 0,
-        };
-      })
-    );
+
+    // 3 requêtes bulk au lieu de 3 requêtes par classe (N+1 → 3 fixes)
+    const [{ data: studentRows }, { data: taskRows }, { data: allCompletions }] = await Promise.all([
+      supabase.from("profiles").select("class_id").eq("role", "STUDENT"),
+      supabase.from("tasks").select("class_id"),
+      supabase.from("task_completions").select("task_id, tasks!inner(class_id)"),
+    ]);
+
+    const studentCountsByClass = new Map<string, number>();
+    const taskCountsByClass = new Map<string, number>();
+    const completionCountsByClass = new Map<string, number>();
+
+    for (const s of studentRows ?? []) {
+      if (s.class_id) studentCountsByClass.set(s.class_id, (studentCountsByClass.get(s.class_id) ?? 0) + 1);
+    }
+    for (const t of taskRows ?? []) {
+      if (t.class_id) taskCountsByClass.set(t.class_id, (taskCountsByClass.get(t.class_id) ?? 0) + 1);
+    }
+    for (const c of allCompletions ?? []) {
+      const cid = (c as any).tasks?.class_id;
+      if (cid) completionCountsByClass.set(cid, (completionCountsByClass.get(cid) ?? 0) + 1);
+    }
+
+    perClass = (classes ?? []).map((c) => {
+      const students = studentCountsByClass.get(c.id) ?? 0;
+      const tasks = taskCountsByClass.get(c.id) ?? 0;
+      const completions = completionCountsByClass.get(c.id) ?? 0;
+      const max = tasks * students;
+      return {
+        className: c.name,
+        students,
+        tasks,
+        completions,
+        completionRate: max > 0 ? Math.round((completions / max) * 100) : 0,
+      };
+    });
   }
 
   return (

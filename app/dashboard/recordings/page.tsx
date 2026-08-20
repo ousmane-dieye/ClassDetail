@@ -20,13 +20,17 @@ export default async function RecordingsPage() {
   } = await supabase.auth.getUser();
   const { data: profile } = await supabase.from("profiles").select("class_id, role").eq("id", user!.id).single();
 
-  const { data: recordings } = await supabase
-    .from("recordings")
-    .select("*")
-    .eq("class_id", profile?.class_id ?? "")
-    .order("date", { ascending: false });
+  const classId = profile?.class_id ?? "";
 
-  const { data: subjects } = await supabase.from("subjects").select("id, name").eq("class_id", profile?.class_id ?? "");
+  // 2 requêtes indépendantes → parallélisées
+  const [{ data: recordings }, { data: subjects }] = await Promise.all([
+    supabase
+      .from("recordings")
+      .select("id, title, description, date, drive_url, class_id, creator_id, created_at")
+      .eq("class_id", classId)
+      .order("date", { ascending: false }),
+    supabase.from("subjects").select("id, name").eq("class_id", classId),
+  ]);
   const canManage = profile?.role === "ADMIN" || profile?.role === "DELEGATE";
 
   return (

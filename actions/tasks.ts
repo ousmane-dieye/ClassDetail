@@ -77,12 +77,15 @@ export async function toggleTaskCompletionAction(taskId: string, completed: bool
     if (error) return { error: error.message };
 
     // Notification « tâche terminée » (événement collaboratif de classe).
-    const { data: task } = await supabase
-      .from("tasks")
-      .select("class_id, title, subject_id")
-      .eq("id", taskId)
-      .maybeSingle();
-    const { data: me } = await supabase.from("profiles").select("first_name, last_name").eq("id", user.id).maybeSingle();
+    // 2 queries indépendantes → parallélisées
+    const [{ data: task }, { data: me }] = await Promise.all([
+      supabase
+        .from("tasks")
+        .select("class_id, title, subject_id")
+        .eq("id", taskId)
+        .maybeSingle(),
+      supabase.from("profiles").select("first_name, last_name").eq("id", user.id).maybeSingle(),
+    ]);
     if (task) {
       const who = `${me?.first_name ?? ""} ${me?.last_name ?? ""}`.trim() || "Un étudiant";
       await notifyClassMembers({

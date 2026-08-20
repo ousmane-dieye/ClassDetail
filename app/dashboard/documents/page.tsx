@@ -28,13 +28,17 @@ export default async function DocumentsPage() {
       d.author_id
     );
 
-  const { data: documents } = await supabase
-    .from("documents")
-    .select("*")
-    .eq("class_id", profile?.class_id ?? "")
-    .order("created_at", { ascending: false });
+  const classId = profile?.class_id ?? "";
 
-  const { data: subjects } = await supabase.from("subjects").select("id, name").eq("class_id", profile?.class_id ?? "");
+  // 2 requêtes indépendantes → parallélisées
+  const [{ data: documents }, { data: subjects }] = await Promise.all([
+    supabase
+      .from("documents")
+      .select("id, title, description, drive_url, class_id, author_id, created_at")
+      .eq("class_id", classId)
+      .order("created_at", { ascending: false }),
+    supabase.from("subjects").select("id, name").eq("class_id", classId),
+  ]);
 
   return (
     <div className="space-y-8 animate-fade-in">

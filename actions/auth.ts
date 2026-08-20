@@ -7,6 +7,10 @@ import { createNotification } from "@/lib/notifications/service";
 import { handleRegistrationDecisionEmail } from "@/lib/email/notifications";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { getClientIp } from "@/lib/security/ip";
+import { checkAuthLoginRateLimits, checkPasswordResetRateLimits } from "@/lib/security/rateLimit";
+import { verifyTurnstileToken } from "@/lib/security/turnstile";
+import { logSecurityEvent } from "@/lib/security/logger";
 
 export async function registerAction(formData: FormData) {
   const parsed = registerSchema.safeParse({
@@ -146,30 +150,26 @@ export async function resubmitRegistrationAction(formData: FormData) {
 
   const admin = createAdminClient();
 
-  // Le profil doit exister (toujours un seul profil par utilisateur).
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id, role")
-    .eq("id", user.id)
-    .maybeSingle();
+  // 2 queries indépendantes → parallélisées
+  const [{ data: profile }, { data: requests }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .maybeSingle(),
+    admin
+      .from("registration_requests")
+      .select("id, status")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
   if (!profile) {
     return { error: "Profil introuvable. Recontactez un administrateur." };
   }
-
-  // Un ADMIN n'a pas de workflow d'inscription (S4).
   if (profile.role === "ADMIN") {
     return { error: "Votre compte administrateur est déjà actif." };
   }
-
-  // Historique des demandes (les anciennes restent consultables) :
-  // - un ACCEPTED est définitif -> aucune resoumission possible ;
-  // - une demande active PENDING -> aucune double demande possible.
-  const { data: requests } = await admin
-    .from("registration_requests")
-    .select("id, status")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
 
   if (requests?.some((r) => r.status === "ACCEPTED")) {
     return { error: "Votre compte est déjà validé. Vous n'avez pas besoin de soumettre une nouvelle demande." };
@@ -218,12 +218,54 @@ export async function loginAction(formData: FormData) {
     return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide" };
   }
 
+  const { email, password } = parsed.data;
+  const ip = getClientIp();
+
+  // 1. Protection Rate Limiting (IP + Compte)
+  const rateLimitResult = await checkAuthLoginRateLimits({ ip, email });
+  if (!rateLimitResult.allowed) {
+    logSecurityEvent("AUTH_RATE_LIMITED", {
+      ip,
+      email,
+      bucket: rateLimitResult.bucket,
+      reason: rateLimitResult.unavailable ? "Infrastructure rate limit indisponible (fail-closed)" : "Seuil maximal de tentatives dépassé",
+    });
+    return { error: "Identifiants invalides ou trop de tentatives. Veuillez réessayer plus tard." };
+  }
+
+  // 2. Protection Turnstile / CAPTCHA (Validation serveur)
+  const turnstileToken = formData.get("cf-turnstile-response") as string | null;
+  if (turnstileToken || process.env.TURNSTILE_SECRET_KEY) {
+    const turnstileResult = await verifyTurnstileToken(turnstileToken, ip);
+    if (!turnstileResult.success) {
+      logSecurityEvent("AUTH_CAPTCHA_FAILED", {
+        ip,
+        email,
+        reason: turnstileResult.error ?? "Validation CAPTCHA invalide",
+      });
+      return { error: "Vérification de sécurité (CAPTCHA) invalide. Veuillez réessayer." };
+    }
+  }
+
+  // 3. Authentification Supabase Auth
   const supabase = createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return { error: "Email ou mot de passe incorrect" };
+    logSecurityEvent("AUTH_LOGIN_FAILED", {
+      ip,
+      email,
+      reason: error.message,
+    });
+    // Anti-énumération : message générique uniforme
+    return { error: "Identifiants invalides ou trop de tentatives. Veuillez réessayer plus tard." };
   }
+
+  logSecurityEvent("AUTH_LOGIN_SUCCESS", {
+    ip,
+    email,
+    userId: authData.user?.id,
+  });
 
   revalidatePath("/dashboard");
   redirect("/dashboard");
@@ -232,13 +274,10 @@ export async function loginAction(formData: FormData) {
 /**
  * F3 — Demande de réinitialisation du mot de passe (étape 1).
  *
- * Déclenche l'envoi d'un email de récupération par Supabase Auth (mécanisme
- * officiel, SMTP configuré côté Supabase). Le lien pointe vers
- * /auth/confirm?next=/reset-password, qui échange le token puis affiche le
- * formulaire de nouveau mot de passe.
+ * Déclenche l'envoi d'un email de récupération par Supabase Auth.
  *
- * SÉCURITÉ : le message retourné est TOUJOURS neutre (aucune révélation sur
- * l'existence du compte) et le résultat de l'API est ignoré côté client.
+ * SÉCURITÉ : rate-limiting par IP (5/15min) et compte (3/15min). Le message retourné
+ * est TOUJOURS neutre ({ success: true }) pour empêcher l'énumération de comptes.
  */
 export async function requestPasswordResetAction(formData: FormData) {
   const parsed = forgotPasswordSchema.safeParse({
@@ -249,13 +288,28 @@ export async function requestPasswordResetAction(formData: FormData) {
     return { error: parsed.error.issues[0]?.message ?? "Email invalide" };
   }
 
+  const { email } = parsed.data;
+  const ip = getClientIp();
+
+  logSecurityEvent("AUTH_PASSWORD_RESET_REQUESTED", { ip, email });
+
+  // Rate limit check pour réinitialisation
+  const rateLimitResult = await checkPasswordResetRateLimits({ ip, email });
+  if (!rateLimitResult.allowed) {
+    logSecurityEvent("AUTH_PASSWORD_RESET_RATE_LIMITED", {
+      ip,
+      email,
+      bucket: rateLimitResult.bucket,
+    });
+    // Anti-énumération : retour fixe { success: true }
+    return { success: true };
+  }
+
   const supabase = createClient();
   const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-  // L'erreur réelle (compte inexistant, limite de débit, SMTP indisponible)
-  // est ignorée : on répond toujours de façon identique pour ne pas permettre
-  // l'énumération des comptes.
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+  // L'erreur réelle (compte inexistant, SMTP indisponible) est ignorée côté réponse client (anti-énumération).
+  await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/auth/confirm?next=/reset-password`,
   });
 
@@ -344,44 +398,42 @@ export async function decideRegistrationAction(
   const className = request.classes?.name ?? "";
 
   if (decision === "ACCEPTED") {
-    // Rattaché le profil à sa classe (lecture de l'email via service role,
-    // seul à pouvoir lire la colonne email).
     const admin = createAdminClient();
-    const { data: studentRow } = await admin
-      .from("profiles")
-      .select("email")
-      .eq("id", request.user_id)
-      .maybeSingle();
+
+    // 2 queries indépendantes → parallélisées (email + update class_id)
+    const [{ data: studentRow }] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("email")
+        .eq("id", request.user_id)
+        .maybeSingle(),
+      request.class_id
+        ? admin
+            .from("profiles")
+            .update({ class_id: request.class_id })
+            .eq("id", request.user_id)
+        : Promise.resolve({ data: null, error: null }),
+    ]);
     const studentEmail = studentRow?.email ?? null;
 
-    if (request.class_id) {
-      await admin
-        .from("profiles")
-        .update({ class_id: request.class_id })
-        .eq("id", request.user_id);
-    }
-
-    await createNotification({
-      userId: request.user_id,
-      type: "REGISTRATION_ACCEPTED",
-      title: "Inscription acceptée",
-      message: "Votre demande d'inscription a été validée. Bienvenue sur ClassPulse !",
-    });
-    if (studentEmail) {
-      try {
-        // Email automatique depuis l'adresse admin, avec anti-doublon
-        // (un AUTHENTICATION_APPROVED SENT ne sera jamais renvoyé).
-        await handleRegistrationDecisionEmail({
-          decision,
-          userId: request.user_id,
-          email: studentEmail,
-          firstName: studentFirstName,
-          lastName: studentLastName,
-        });
-      } catch (e) {
-        console.error("Erreur envoi email de validation :", e);
-      }
-    }
+    // Notification + email → parallélisées
+    await Promise.all([
+      createNotification({
+        userId: request.user_id,
+        type: "REGISTRATION_ACCEPTED",
+        title: "Inscription acceptée",
+        message: "Votre demande d'inscription a été validée. Bienvenue sur ClassPulse !",
+      }),
+      studentEmail
+        ? handleRegistrationDecisionEmail({
+            decision,
+            userId: request.user_id,
+            email: studentEmail,
+            firstName: studentFirstName,
+            lastName: studentLastName,
+          }).catch((e) => console.error("Erreur envoi email de validation :", e))
+        : Promise.resolve(),
+    ]);
   } else {
     // Refus : notification interne uniquement, aucun email envoyé.
     await createNotification({

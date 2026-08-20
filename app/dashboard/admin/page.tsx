@@ -43,30 +43,46 @@ export default async function AdminDashboard() {
 
   if (!me || me.role !== "ADMIN") redirect("/dashboard");
 
-  const { data: classes } = await supabase.from("classes").select("*").order("name");
-  const { count: totalStudents } = await supabase
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .eq("role", "STUDENT");
-  const { count: totalDelegates } = await supabase
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .eq("role", "DELEGATE");
-  const { count: totalTasks } = await supabase.from("tasks").select("id", { count: "exact", head: true });
-
   const admin = createAdminClient();
-  const { data: pendingRequests } = await admin
-    .from("registration_requests")
-    .select(
-      "id, created_at, profiles!registration_requests_user_id_fkey(first_name, last_name, email), classes(name)"
-    )
-    .eq("status", "PENDING")
-    .order("created_at", { ascending: true });
 
-  const { data: members } = await admin
-    .from("profiles")
-    .select("id, first_name, last_name, email, role, class_id")
-    .in("role", ["STUDENT", "DELEGATE"]);
+  // 6 requêtes indépendantes → parallélisées
+  const [
+    classesResult,
+    totalStudentsResult,
+    totalDelegatesResult,
+    totalTasksResult,
+    pendingRequestsResult,
+    membersResult,
+  ] = await Promise.all([
+    supabase.from("classes").select("id, name, level, academic_year").order("name"),
+    supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("role", "STUDENT"),
+    supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("role", "DELEGATE"),
+    supabase.from("tasks").select("id", { count: "exact", head: true }),
+    admin
+      .from("registration_requests")
+      .select(
+        "id, created_at, profiles!registration_requests_user_id_fkey(first_name, last_name, email), classes(name)"
+      )
+      .eq("status", "PENDING")
+      .order("created_at", { ascending: true }),
+    admin
+      .from("profiles")
+      .select("id, first_name, last_name, email, role, class_id")
+      .in("role", ["STUDENT", "DELEGATE"]),
+  ]);
+
+  const classes = classesResult.data;
+  const totalStudents = totalStudentsResult.count;
+  const totalDelegates = totalDelegatesResult.count;
+  const totalTasks = totalTasksResult.count;
+  const pendingRequests = pendingRequestsResult.data;
+  const members = membersResult.data;
 
   const membersList = (members ?? []) as any[];
   const memberGroups: { title: string; classId: string; members: any[] }[] = (classes ?? [])

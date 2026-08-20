@@ -14,7 +14,7 @@ export default async function NotificationsPage() {
 
   const { data: notifications } = await supabase
     .from("notifications")
-    .select("*")
+    .select("id, type, title, message, entity_type, entity_id, link, category, read_at, created_at")
     .eq("recipient_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);

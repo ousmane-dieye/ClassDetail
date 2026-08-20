@@ -6,8 +6,8 @@
 // Ce prédicat keyset partitionne l'ensemble des messages sans doublon ni
 // perte, y compris quand plusieurs messages partagent le même created_at.
 
-export const CHAT_INITIAL_PAGE_SIZE = 100;
-export const CHAT_PAGE_SIZE = 50;
+export const CHAT_INITIAL_PAGE_SIZE = 50;
+export const CHAT_PAGE_SIZE = 30;
 
 export interface ChatCursor {
   createdAt: string;

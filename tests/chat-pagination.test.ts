@@ -75,12 +75,12 @@ function walkHistory(allInClass: Msg[]): Msg[] {
 }
 
 describe("F2 — pagination du chat", () => {
-  it("les 100 derniers messages apparaissent (page initiale DESC inversée)", () => {
+  it("les derniers messages apparaissent (page initiale DESC inversée)", () => {
     const all = makeMessages(250);
     const sorted = sortDesc(all);
     const first = sorted.slice(0, CHAT_INITIAL_PAGE_SIZE).reverse(); // affichage chronologique
     expect(first).toHaveLength(CHAT_INITIAL_PAGE_SIZE);
-    expect(first[0]!.content).toBe("msg 150"); // le plus ancien de la page
+    expect(first[0]!.content).toBe("msg 200"); // le plus ancien de la page (250 - 50 = 200)
     expect(first[first.length - 1]!.content).toBe("msg 249"); // le plus récent
     expect(first[first.length - 1]).toBe(sorted[0]); // dernier = message le plus récent
   });

@@ -14,8 +14,11 @@ vi.mock("@/lib/supabase/admin", () => ({
         };
       }
       return {
-        insert: (payload: Record<string, unknown>) => {
-          state.inserted.push(payload);
+        insert: (payload: Record<string, unknown> | Record<string, unknown>[]) => {
+          const items = Array.isArray(payload) ? payload : [payload];
+          for (const item of items) {
+            state.inserted.push(item);
+          }
           return { select: () => ({ single: () => Promise.resolve({ data: { id: `n-${state.inserted.length}` }, error: null }) }) };
         },
       };
