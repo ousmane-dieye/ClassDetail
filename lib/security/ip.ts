@@ -10,7 +10,7 @@ export function getClientIp(): string {
     const xff = headerList.get("x-forwarded-for");
     if (xff) {
       // x-forwarded-for peut contenir une liste d'IPs séparées par une virgule ("client, proxy1, proxy2")
-      const clientIp = xff.split(",")[0].trim();
+      const clientIp = xff.split(",")[0]?.trim();
       if (clientIp) return clientIp;
     }
     const realIp = headerList.get("x-real-ip");

@@ -30,12 +30,12 @@ export interface SecurityEventDetails {
  */
 export function anonymizeEmail(email: string): string {
   if (!email || !email.includes("@")) return "***@***";
-  const [local, domain] = email.trim().toLowerCase().split("@");
-  
+  const [local = "", domain = ""] = email.trim().toLowerCase().split("@");
+
   const anonLocal =
     local.length <= 2
       ? `${local[0] ?? "*"}*`
-      : `${local[0]}***${local[local.length - 1]}`;
+      : `${local[0] ?? "*"}***${local[local.length - 1] ?? "*"}`;
 
   const domainParts = domain.split(".");
   const mainDomain = domainParts[0] ?? "";
@@ -44,7 +44,7 @@ export function anonymizeEmail(email: string): string {
   const anonDomain =
     mainDomain.length <= 2
       ? `${mainDomain[0] ?? "*"}*`
-      : `${mainDomain[0]}***${mainDomain[mainDomain.length - 1]}`;
+      : `${mainDomain[0] ?? "*"}***${mainDomain[mainDomain.length - 1] ?? "*"}`;
 
   return `${anonLocal}@${anonDomain}${ext ? `.${ext}` : ""}`;
 }
@@ -58,7 +58,7 @@ export function anonymizeIp(ip: string): string {
   if (ip.includes(".")) {
     const parts = ip.split(".");
     if (parts.length === 4) {
-      return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
+      return `${parts[0] ?? "xxx"}.${parts[1] ?? "xxx"}.${parts[2] ?? "xxx"}.xxx`;
     }
   }
   if (ip.includes(":")) {
