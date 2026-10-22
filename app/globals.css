@@ -369,6 +369,65 @@
 .typing-dot:nth-child(3) { animation-delay: 0.3s; }
 
 /* ────────────────────────────────────────────────────────────────
+   SIDEBAR — tooltips mode compact
+   ──────────────────────────────────────────────────────────────── */
+
+/* Wrapper positionné autour de chaque item en mode compact */
+.sidebar-tooltip-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+/* Le tooltip lui-même */
+.sidebar-tooltip {
+  pointer-events: none;
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  white-space: nowrap;
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0s linear 0.15s;
+  z-index: 9999;
+}
+
+/* Flèche du tooltip */
+.sidebar-tooltip::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: hsl(var(--foreground));
+}
+
+/* Affichage au hover */
+.sidebar-tooltip-wrapper:hover .sidebar-tooltip,
+.sidebar-tooltip-wrapper:focus-within .sidebar-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0s linear 0s;
+}
+
+/* ────────────────────────────────────────────────────────────────
    ACCESSIBILITÉ — mouvement réduit
    ──────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
