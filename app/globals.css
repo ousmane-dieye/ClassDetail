@@ -428,6 +428,19 @@
 }
 
 /* ────────────────────────────────────────────────────────────────
+   MOBILE BOTTOM NAV — réserve la hauteur de la barre fixe
+   ──────────────────────────────────────────────────────────────── */
+
+/* Marge basse du contenu (barre de 4rem + safe area), mobile uniquement.
+   Règle hors @layer : prioritaire sur les utilitaires Tailwind de
+   padding afin de rester efficace quelle que soit la classe responsive. */
+@media (max-width: 767.98px) {
+  .mobile-nav-offset {
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
    ACCESSIBILITÉ — mouvement réduit
    ──────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {

@@ -5,22 +5,17 @@ import { createContext, useContext, useEffect, useState } from "react";
 interface SidebarContextValue {
   collapsed: boolean;
   toggle: () => void;
-  mobileOpen: boolean;
-  setMobileOpen: (v: boolean) => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue>({
   collapsed: false,
   toggle: () => {},
-  mobileOpen: false,
-  setMobileOpen: () => {},
 });
 
 const STORAGE_KEY = "classpulse_sidebar_collapsed";
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Restaure la préférence persistée
   useEffect(() => {
@@ -41,7 +36,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <SidebarContext.Provider value={{ collapsed, toggle, mobileOpen, setMobileOpen }}>
+    <SidebarContext.Provider value={{ collapsed, toggle }}>
       {children}
     </SidebarContext.Provider>
   );

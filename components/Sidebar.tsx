@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
 import { logoutAction } from "@/actions/auth";
 import type { UserRole } from "@/types/database.types";
 import { useSidebar } from "@/components/SidebarContext";
@@ -17,8 +16,6 @@ import {
   BarChart3,
   Shield,
   LogOut,
-  Menu,
-  X,
   GraduationCap,
   Sparkles,
   ChevronRight,
@@ -26,6 +23,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 
 /* ──────────────────────────────────────────────────────────────────
    Navigation items
@@ -393,114 +391,24 @@ function SidebarContent({
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   Mobile drawer
-   ────────────────────────────────────────────────────────────────── */
-
-function MobileDrawer({ role }: { role: UserRole }) {
-  const { mobileOpen, setMobileOpen } = useSidebar();
-  const pathname = usePathname();
-  const drawerRef = useRef<HTMLElement>(null);
-
-  // Ferme au changement de route
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname, setMobileOpen]);
-
-  // Bloque le scroll body quand ouvert
-  useEffect(() => {
-    document.body.style.overflow = mobileOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [mobileOpen]);
-
-  // Focus trap simple : retourne le focus à l'ouverture
-  useEffect(() => {
-    if (mobileOpen && drawerRef.current) {
-      const first = drawerRef.current.querySelector<HTMLElement>(
-        "a, button, [tabindex]:not([tabindex='-1'])"
-      );
-      first?.focus();
-    }
-  }, [mobileOpen]);
-
-  if (!mobileOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 md:hidden">
-      {/* Backdrop */}
-      <button
-        aria-label="Fermer le menu"
-        onClick={() => setMobileOpen(false)}
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
-      />
-
-      {/* Drawer panel */}
-      <aside
-        ref={drawerRef}
-        className="absolute left-0 top-0 h-full w-80 max-w-[88vw] flex-col border-r border-border bg-card shadow-2xl animate-slide-in-left overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Menu de navigation ClassPulse"
-      >
-        <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-subtle">
-              <GraduationCap size={18} strokeWidth={2} />
-            </div>
-            <span className="font-display text-base font-bold tracking-tight">
-              ClassPulse
-            </span>
-          </div>
-          <button
-            onClick={() => setMobileOpen(false)}
-            aria-label="Fermer le menu"
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-95"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5">
-          <SidebarContent
-            role={role}
-            collapsed={false}
-            onNavigate={() => setMobileOpen(false)}
-          />
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-/* ──────────────────────────────────────────────────────────────────
    Main export
    ────────────────────────────────────────────────────────────────── */
 
-export function Sidebar({ role }: { role: UserRole }) {
-  const { collapsed, setMobileOpen } = useSidebar();
+export function Sidebar({
+  role,
+  unreadCount = 0,
+  userName,
+}: {
+  role: UserRole;
+  unreadCount?: number;
+  userName?: string;
+}) {
+  const { collapsed } = useSidebar();
 
   return (
     <>
-      {/* ── Mobile top bar ── */}
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md md:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-subtle">
-            <GraduationCap size={17} strokeWidth={2} />
-          </div>
-          <span className="font-display text-base font-bold tracking-tight text-foreground">
-            ClassPulse
-          </span>
-        </Link>
-
-        <button
-          onClick={() => setMobileOpen(true)}
-          aria-label="Ouvrir le menu de navigation"
-          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-foreground transition-all hover:border-primary/40 hover:bg-muted active:scale-95"
-        >
-          <Menu size={18} />
-        </button>
-      </div>
+      {/* ── Mobile : bottom navigation fixe en bas d'écran ── */}
+      <MobileBottomNav role={role} unreadCount={unreadCount} userName={userName} />
 
       {/* ── Desktop collapsible sidebar ── */}
       <aside
@@ -516,9 +424,6 @@ export function Sidebar({ role }: { role: UserRole }) {
       >
         <SidebarContent role={role} collapsed={collapsed} showToggle />
       </aside>
-
-      {/* ── Mobile drawer ── */}
-      <MobileDrawer role={role} />
     </>
   );
 }

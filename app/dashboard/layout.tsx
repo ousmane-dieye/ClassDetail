@@ -64,8 +64,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <SidebarProvider>
       <div className="flex min-h-screen flex-col md:flex-row bg-background">
-        {/* Sidebar navigation */}
-        <Sidebar role={profile.role} />
+        {/* Sidebar navigation — desktop ; bottom navigation mobile */}
+        <Sidebar
+          role={profile.role}
+          unreadCount={unreadCount ?? 0}
+          userName={`${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim()}
+        />
 
         {/* Zone de contenu — flex-1 s'adapte automatiquement à la largeur de la sidebar */}
         <div className="flex flex-1 flex-col overflow-x-hidden min-w-0">
@@ -102,8 +106,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </div>
           </header>
 
-          {/* Contenu des pages */}
-          <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 md:p-8 animate-fade-in">
+          {/* Contenu des pages — marge basse mobile pour dépasser la bottom navigation */}
+          <main className="mobile-nav-offset mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 md:p-8 animate-fade-in">
             {children}
           </main>
 
