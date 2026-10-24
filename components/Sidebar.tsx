@@ -342,8 +342,9 @@ function SidebarContent({
               <span className="text-xs font-bold text-foreground">Assistant IA</span>
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              Une question sur un cours ou du code ? Interrogez l&apos;assistant depuis
-              le bouton flottant.
+              Une question sur vos devoirs, votre emploi du temps ou vos
+              ressources ? Interrogez l&apos;assistant depuis le bouton
+              flottant.
             </p>
           </div>
         )}

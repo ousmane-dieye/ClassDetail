@@ -85,7 +85,7 @@ export const SITE = {
   name: "ClassPulse",
   tagline: "Apprendre. Construire. Partager.",
   description:
-    "La plateforme académique des classes d'informatique : cours, devoirs, documents, Hints, messagerie et assistant IA.",
+    "La plateforme académique des classes d'informatique : devoirs, documents, Hints, cours enregistrés, emploi du temps, évaluations, chat de classe et assistant IA.",
   quotes: {
     hero: "Le savoir devient puissant lorsqu'il est partagé.",
     auth: "Construisez votre avenir avec le savoir.",
