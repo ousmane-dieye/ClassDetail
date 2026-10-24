@@ -197,3 +197,50 @@ export function renderTestEmailTemplate(platformName: string): string {
       </p>`,
   });
 }
+
+export interface ClassEventEmailData {
+  /** Prénom du destinataire (optionnel — jamais inventé). */
+  firstName?: string | null;
+  /** Titre de l'événement (emoji acceptés, échappé). */
+  heading: string;
+  /** Message de l'événement (contenu réel de la notification, échappé). */
+  message: string;
+  /** Lien ABSOLU vers l'événement concerné (optionnel). */
+  buttonUrl?: string | null;
+  buttonLabel?: string;
+  /** Lien absolu vers les paramètres de notifications (footer). */
+  settingsUrl?: string | null;
+  platformName: string;
+}
+
+/**
+ * Template générique des emails pédagogiques (devoirs, évaluations, emploi
+ * du temps, annonces, ressources). Réutilise le layout commun : HTML inline,
+ * largeur 600px, lisible sur mobile et dans Gmail/Outlook.
+ */
+export function renderClassEventTemplate(data: ClassEventEmailData): string {
+  const platform = escapeHtml(data.platformName);
+  const firstName = (data.firstName ?? "").trim();
+  const intro = firstName
+    ? `Bonjour ${escapeHtml(firstName)},<br/><br/>`
+    : "";
+
+  const settingsLink = data.settingsUrl
+    ? `Vous pouvez changer de canal à tout moment dans vos
+       <a href="${escapeHtml(data.settingsUrl)}" target="_blank" rel="noopener noreferrer"
+          style="color:#1d4ed8;text-decoration:underline;">paramètres de notifications</a>.`
+    : `Vous pouvez changer de canal dans vos paramètres de notifications.`;
+
+  return emailLayout({
+    title: data.heading,
+    platformName: data.platformName,
+    bodyHtml: `
+      <p>${intro}${escapeHtml(data.message)}</p>
+      ${data.buttonUrl ? emailButton(escapeHtml(data.buttonUrl), escapeHtml(data.buttonLabel ?? "Voir dans ClassPulse")) : ""}
+      <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;"/>
+      <p style="margin:0;font-size:13px;color:#475569;">
+        ${settingsLink}<br/>
+        Cordialement,<br/>L'administration<br/><strong>${platform}</strong>
+      </p>`,
+  });
+}

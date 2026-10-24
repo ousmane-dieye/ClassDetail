@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const state = vi.hoisted(() => ({
   inserted: [] as Array<Record<string, unknown>>,
   members: [] as Array<{ id: string }>,
+  /** Préférences enregistrées (vide = valeurs par défaut de ClassPulse). */
+  preferences: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -12,6 +14,20 @@ vi.mock("@/lib/supabase/admin", () => ({
         return {
           select: () => ({ eq: () => Promise.resolve({ data: state.members, error: null }) }),
         };
+      }
+      if (table === "notification_preferences") {
+        // Lecture groupée : .select().eq("category", ...).in("user_id", [...])
+        const selected = () => {
+          const query: Record<string, unknown> = {};
+          const eq = () => query;
+          query.select = () => query;
+          query.eq = eq;
+          query.in = () => query;
+          (query as any).then = (resolve: any, reject: any) =>
+            Promise.resolve({ data: state.preferences, error: null }).then(resolve, reject);
+          return query;
+        };
+        return { select: selected };
       }
       return {
         insert: (payload: Record<string, unknown> | Record<string, unknown>[]) => {
@@ -26,6 +42,15 @@ vi.mock("@/lib/supabase/admin", () => ({
   })),
 }));
 
+// Aucun email réel pendant la suite : le dispatch est simulé et traçable.
+const dispatchState = vi.hoisted(() => ({ calls: [] as Array<Record<string, any>> }));
+vi.mock("@/lib/email/dispatch", () => ({
+  sendClassEventEmails: vi.fn(async (input: Record<string, any>) => {
+    dispatchState.calls.push(input);
+    return { sent: 0, skipped: 0, failed: 0, errors: [] };
+  }),
+}));
+
 import {
   createNotification,
   notifyClassMembers,
@@ -35,6 +60,8 @@ import {
 beforeEach(() => {
   state.inserted = [];
   state.members = [{ id: "m1" }, { id: "m2" }, { id: "m3" }];
+  state.preferences = [];
+  dispatchState.calls = [];
 });
 
 describe("notificationCategoryOf", () => {
@@ -51,6 +78,18 @@ describe("notificationCategoryOf", () => {
     expect(notificationCategoryOf("HINT_ADDED")).toBe("hints");
     expect(notificationCategoryOf("ANNOUNCEMENT_CREATED")).toBe("announcements");
     expect(notificationCategoryOf("REGISTRATION_ACCEPTED")).toBe("system");
+  });
+
+  it("catégorise les types du module emploi du temps en « schedule »", () => {
+    expect(notificationCategoryOf("SCHEDULE_PUBLISHED")).toBe("schedule");
+    expect(notificationCategoryOf("SCHEDULE_UPDATED")).toBe("schedule");
+    expect(notificationCategoryOf("SESSION_CANCELLED")).toBe("schedule");
+  });
+
+  it("catégorise les types du module évaluations en « evaluations »", () => {
+    expect(notificationCategoryOf("EVALUATION_PUBLISHED")).toBe("evaluations");
+    expect(notificationCategoryOf("EVALUATION_UPDATED")).toBe("evaluations");
+    expect(notificationCategoryOf("EVALUATION_CANCELLED")).toBe("evaluations");
   });
 
   it("retourne 'system' pour un type inconnu", () => {

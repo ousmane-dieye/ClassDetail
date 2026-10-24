@@ -21,7 +21,13 @@ export type NotificationType =
   | "COURSE_SAVED"
   | "ANNOUNCEMENT_CREATED"
   | "COURSE_UPDATED"
-  | "TASK_COMPLETED";
+  | "TASK_COMPLETED"
+  | "SCHEDULE_PUBLISHED"
+  | "SCHEDULE_UPDATED"
+  | "SESSION_CANCELLED"
+  | "EVALUATION_PUBLISHED"
+  | "EVALUATION_UPDATED"
+  | "EVALUATION_CANCELLED";
 
 export type NotificationCategory =
   | "tasks"
@@ -30,10 +36,46 @@ export type NotificationCategory =
   | "documents"
   | "hints"
   | "system"
-  | "announcements";
+  | "announcements"
+  | "schedule"
+  | "evaluations";
 
-export type EmailNotificationType = "AUTHENTICATION_APPROVED" | "ASSIGNMENT_3_DAYS" | "ASSIGNMENT_1_DAY";
+/** Type d'une évaluation (module Évaluations). */
+export type EvaluationType = "CC" | "DEVOIR_SURVEILLE" | "EXAMEN" | "RATTRAPAGE" | "TP" | "AUTRE";
+/** Cycle de vie : brouillon → publiée → (éventuellement) annulée. */
+export type EvaluationStatus = "DRAFT" | "PUBLISHED" | "CANCELLED";
+
+/**
+ * Catégories de préférences de notifications (table `notification_preferences`).
+ * Identifiants techniques stables — les libellés français affichés dans
+ * l'interface vivent dans `lib/notifications/preferences.ts` (CATEGORY_META).
+ */
+export type NotificationPreferenceCategory =
+  | "ASSIGNMENTS"
+  | "ASSIGNMENT_REMINDERS"
+  | "EVALUATIONS"
+  | "SCHEDULE"
+  | "ANNOUNCEMENTS"
+  | "RESOURCES"
+  | "CHAT";
+
+/**
+ * Types d'email enregistrés dans `assignment_email_notifications` :
+ *   - 3 types historiques (authentification + rappels J-3/J-1) ;
+ *   - les types d'événements pédagogiques envoyés par catégorie.
+ */
+export type EmailNotificationType = NotificationType | "AUTHENTICATION_APPROVED" | "ASSIGNMENT_3_DAYS" | "ASSIGNMENT_1_DAY";
 export type EmailNotificationStatus = "PENDING" | "SENT" | "FAILED";
+
+export type NotificationPreferenceRow = {
+  id: string;
+  user_id: string;
+  category: NotificationPreferenceCategory;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
 
 export type ClassRow = {
   id: string;
@@ -60,6 +102,107 @@ export type SubjectRow = {
   class_id: string;
   name: string;
   code: string | null;
+  color_key: string;
+  created_at: string;
+};
+
+/** Clés de la palette contrôlée de couleurs de matières (lib/constants/subjectColors.ts). */
+export type SubjectColorKey =
+  | "blue"
+  | "indigo"
+  | "violet"
+  | "emerald"
+  | "teal"
+  | "amber"
+  | "rose"
+  | "red"
+  | "cyan"
+  | "orange"
+  | "purple"
+  | "yellow"
+  | "fuchsia"
+  | "sky"
+  | "lime"
+  | "pink"
+  | "green"
+  | "slate"
+  | "stone"
+  | "gray";
+
+export type ScheduleSessionStatus = "DRAFT" | "PUBLISHED";
+
+export type ScheduleSessionRow = {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  /** Jour ISO : 1 = lundi … 7 = dimanche. */
+  day_of_week: number;
+  /** Heure locale Africa/Dakar, format "HH:MM:SS". */
+  start_time: string;
+  end_time: string;
+  room: string | null;
+  teacher: string | null;
+  /** Date ISO "YYYY-MM-DD" (validité de la règle récurrente). */
+  valid_from: string;
+  valid_until: string | null;
+  status: ScheduleSessionStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ScheduleExceptionRow = {
+  id: string;
+  session_id: string;
+  class_id: string;
+  /** Date ISO "YYYY-MM-DD" de l'occurrence concernée. */
+  date: string;
+  is_cancelled: boolean;
+  new_start_time: string | null;
+  new_end_time: string | null;
+  new_room: string | null;
+  new_subject_id: string | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvaluationRow = {
+  id: string;
+  class_id: string;
+  subject_id: string;
+  title: string;
+  type: EvaluationType;
+  description: string | null;
+  /** Date ISO "YYYY-MM-DD" (fuseau de l'application). */
+  date: string;
+  /** Heure locale "HH:MM:SS" — null si inconnue. */
+  start_time: string | null;
+  end_time: string | null;
+  room: string | null;
+  /** Chapitres concernés — toujours facultatifs (tableau vide = inconnu). */
+  chapters: string[];
+  status: EvaluationStatus;
+  /** Ancienne date si l'évaluation publiée a été reportée. */
+  rescheduled_from: string | null;
+  cancellation_note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvaluationDocumentRow = {
+  evaluation_id: string;
+  class_id: string;
+  document_id: string;
+  created_at: string;
+};
+
+export type EvaluationHintRow = {
+  evaluation_id: string;
+  class_id: string;
+  hint_id: string;
   created_at: string;
 };
 
@@ -195,6 +338,9 @@ export type EmailNotificationRow = {
   status: EmailNotificationStatus;
   sent_at: string | null;
   error_message: string | null;
+  /** Entité polymorphe (evaluation, schedule_session, chat…) — anti-doublon. */
+  entity_type: string | null;
+  entity_id: string | null;
   created_at: string;
 };
 
@@ -326,6 +472,19 @@ export interface Database {
         Update: Partial<NotificationRow>;
         Relationships: [];
       };
+      notification_preferences: {
+        Row: NotificationPreferenceRow;
+        Insert: Partial<NotificationPreferenceRow>;
+        Update: Partial<NotificationPreferenceRow>;
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       assistant_chats: {
         Row: AssistantChatRow;
         Insert: Partial<AssistantChatRow>;
@@ -356,6 +515,36 @@ export interface Database {
             referencedColumns: ["id"],
           },
         ];
+      };
+      schedule_sessions: {
+        Row: ScheduleSessionRow;
+        Insert: Partial<ScheduleSessionRow>;
+        Update: Partial<ScheduleSessionRow>;
+        Relationships: [];
+      };
+      schedule_session_exceptions: {
+        Row: ScheduleExceptionRow;
+        Insert: Partial<ScheduleExceptionRow>;
+        Update: Partial<ScheduleExceptionRow>;
+        Relationships: [];
+      };
+      evaluations: {
+        Row: EvaluationRow;
+        Insert: Partial<EvaluationRow>;
+        Update: Partial<EvaluationRow>;
+        Relationships: [];
+      };
+      evaluation_documents: {
+        Row: EvaluationDocumentRow;
+        Insert: Partial<EvaluationDocumentRow>;
+        Update: Partial<EvaluationDocumentRow>;
+        Relationships: [];
+      };
+      evaluation_hints: {
+        Row: EvaluationHintRow;
+        Insert: Partial<EvaluationHintRow>;
+        Update: Partial<EvaluationHintRow>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

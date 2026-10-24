@@ -17,14 +17,20 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isValidEmail, sanitizeError, sendAssignmentReminderEmail, sendAuthenticationApprovedEmail, type EmailProvider } from "@/lib/email/emailService";
 import { formatDueDate, formatDueTime } from "@/lib/email/reminders";
+import type { EmailNotificationType } from "@/types/database.types";
 
+/**
+ * Types d'email « historiques » (authentification + rappels J-3/J-1).
+ * Les emails pédagogiques utilisent directement leur `NotificationType`
+ * (le type de l'événement) — voir `EmailNotificationType`.
+ */
 export const EMAIL_NOTIFICATION_TYPE = {
   AUTHENTICATION_APPROVED: "AUTHENTICATION_APPROVED",
   ASSIGNMENT_3_DAYS: "ASSIGNMENT_3_DAYS",
   ASSIGNMENT_1_DAY: "ASSIGNMENT_1_DAY",
 } as const;
 
-export type EmailNotificationType = (typeof EMAIL_NOTIFICATION_TYPE)[keyof typeof EMAIL_NOTIFICATION_TYPE];
+export type { EmailNotificationType };
 
 export type EmailNotificationStatus = "PENDING" | "SENT" | "FAILED";
 
@@ -78,6 +84,9 @@ export interface RecordEmailNotificationInput {
   type: EmailNotificationType;
   status: EmailNotificationStatus;
   errorMessage?: string | null;
+  /** Entité polymorphe (evaluation, schedule_session, chat…) — null pour l'auth. */
+  entityType?: string | null;
+  entityId?: string | null;
 }
 
 /** Enregistre le résultat de l'envoi. */
@@ -91,7 +100,80 @@ export async function recordEmailNotification(input: RecordEmailNotificationInpu
     status: input.status,
     sent_at: input.status === "SENT" ? now : null,
     error_message: input.errorMessage ?? null,
+    entity_type: input.entityType ?? null,
+    entity_id: input.entityId ?? null,
   });
+}
+
+export interface AlreadySentQuery {
+  type: EmailNotificationType;
+  userIds: string[];
+  assignmentId?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+}
+
+/**
+ * Anti-doublon PAR LOT : retourne les utilisateurs à qui cet email (même
+ * type + même clé métier) a déjà été envoyé avec succès (SENT).
+ *
+ * Une seule requête pour tous les destinataires — jamais N requêtes.
+ * Une erreur de lecture est considérée comme « rien d'envoyé » (l'envoi reste
+ * protégé par les index uniques partiels en base : un doublon éventuel est
+ * rejeté au moment de l'enregistrement, jamais envoyé deux fois).
+ */
+export async function findAlreadySentUserIds(query: AlreadySentQuery): Promise<Set<string>> {
+  const sent = new Set<string>();
+  if (query.userIds.length === 0) return sent;
+
+  try {
+    let q = admin()
+      .from("assignment_email_notifications")
+      .select("user_id")
+      .eq("notification_type", query.type)
+      .eq("status", "SENT")
+      .in("user_id", query.userIds);
+
+    if (query.assignmentId) {
+      q = q.eq("assignment_id", query.assignmentId);
+    } else if (query.entityId && query.entityType) {
+      q = q.eq("entity_type", query.entityType).eq("entity_id", query.entityId);
+    } else {
+      q = q.is("assignment_id", null).is("entity_id", null);
+    }
+
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      if (row.user_id) sent.add(row.user_id);
+    }
+  } catch (error) {
+    console.error(
+      "EmailNotifications : anti-doublon illisible (type=%s) : %s",
+      query.type,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+  return sent;
+}
+
+/** Enregistre plusieurs résultats d'envoi en une seule écriture. */
+export async function recordEmailNotifications(inputs: RecordEmailNotificationInput[]): Promise<void> {
+  if (inputs.length === 0) return;
+  const now = new Date().toISOString();
+  await admin().from("assignment_email_notifications").insert(
+    inputs.map((input) => ({
+      assignment_id: input.assignmentId,
+      user_id: input.userId,
+      email: input.email,
+      notification_type: input.type,
+      status: input.status,
+      sent_at: input.status === "SENT" ? now : null,
+      error_message: input.errorMessage ?? null,
+      entity_type: input.entityType ?? null,
+      entity_id: input.entityId ?? null,
+    }))
+  );
 }
 
 /**

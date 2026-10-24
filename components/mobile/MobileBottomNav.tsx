@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard,
+  CalendarDays,
   CheckSquare,
+  ClipboardCheck,
   FileText,
   MessageSquare,
   MoreHorizontal,
@@ -18,6 +20,7 @@ import {
   LogOut,
   X,
   GraduationCap,
+  Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
@@ -43,9 +46,12 @@ const PRIMARY_ICONS: Record<string, LucideIcon> = {
 };
 
 const MORE_ICONS: Record<string, LucideIcon> = {
+  "/dashboard/schedule": CalendarDays,
+  "/dashboard/evaluations": ClipboardCheck,
   "/dashboard/hints": Lightbulb,
   "/dashboard/recordings": Video,
   "/dashboard/notifications": Bell,
+  "/dashboard/settings/notifications": Settings,
   "/dashboard/stats": BarChart3,
   "/dashboard/admin": Shield,
 };

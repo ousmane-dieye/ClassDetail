@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendAssignmentReminderEmailToUser } from "@/lib/email/notifications";
 import { getReminderKind } from "@/lib/email/reminders";
+import { loadChannels } from "@/lib/notifications/preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,16 @@ export const dynamic = "force-dynamic";
  *   - email automatique depuis l'email administrateur (anti-doublon via
  *     `assignment_email_notifications`) — jamais renvoyé si déjà SENT,
  *     jamais envoyé si le devoir a déjà été rendu, retenté si échec (FAILED).
+ *
+ * PRÉFÉRENCES INDIVIDUELLES (catégorie ASSIGNMENT_REMINDERS) — évaluées côté
+ * serveur, par destinataire, avant chaque canal :
+ *   - canal interne désactivé → aucune ligne `task_reminders_sent` ni
+ *     notification (le compteur n'est pas faussé, l'email reste possible) ;
+ *   - canal e-mail désactivé → l'email n'est même pas tenté, mais la
+ *     notification interne est créée si elle est autorisée ;
+ *   - les deux désactivés → rien n'est émis pour cet étudiant.
+ *   Une lecture GROUPÉE des préférences par devoir (jamais une requête par
+ *   étudiant). Les règles de date, de rendu et d'anti-doublon sont inchangées.
  *
  * Gère : fuseau horaire (NEXT_PUBLIC_APP_TIMEZONE), changement de deadline
  * (recalcul de J chaque jour), devoir supprimé (cascade) et devoir rendu.
@@ -39,8 +50,10 @@ export async function GET(request: Request) {
   const stats = {
     tasksProcessed: 0,
     notificationsCreated: 0,
+    notificationsDisabled: 0,
     emailsSent: 0,
     emailsSkipped: 0,
+    emailsDisabled: 0,
     emailsFailed: 0,
     errors: [] as string[],
   };
@@ -66,31 +79,49 @@ export async function GET(request: Request) {
 
     const completedIds = new Set((completions ?? []).map((c) => c.student_id));
     const pendingStudents = (members ?? []).filter((m) => !completedIds.has(m.id));
+    if (pendingStudents.length === 0) continue;
+
+    // Préférences individuelles : UNE requête pour tous les étudiants du devoir.
+    const channels = await loadChannels(
+      pendingStudents.map((s) => s.id),
+      "ASSIGNMENT_REMINDERS"
+    );
 
     const subjectName = task.subjects?.name ?? "";
 
     for (const student of pendingStudents) {
-      // ---- Notification interne (comportement existant, inchangé) ----
-      const { error: insertError } = await supabase.from("task_reminders_sent").insert({
-        task_id: task.id,
-        student_id: student.id,
-        kind,
-      });
-      if (!insertError) {
-        stats.notificationsCreated++;
-        await supabase.from("notifications").insert({
-          recipient_id: student.id,
-          type: "TASK_REMINDER",
-          title: kind === "J1" ? "Échéance demain" : "Échéance dans 3 jours",
-          message: `La tâche "${task.title}" n'est pas encore terminée.`,
-          entity_type: "task",
-          entity_id: task.id,
-          link: "/dashboard/tasks",
-          category: "tasks",
+      const prefs = channels.get(student.id) ?? { inApp: true, email: true };
+
+      // ---- Notification interne (si autorisée pour cet étudiant) ----
+      if (prefs.inApp) {
+        const { error: insertError } = await supabase.from("task_reminders_sent").insert({
+          task_id: task.id,
+          student_id: student.id,
+          kind,
         });
+        if (!insertError) {
+          stats.notificationsCreated++;
+          await supabase.from("notifications").insert({
+            recipient_id: student.id,
+            type: "TASK_REMINDER",
+            title: kind === "J1" ? "Échéance demain" : "Échéance dans 3 jours",
+            message: `La tâche "${task.title}" n'est pas encore terminée.`,
+            entity_type: "task",
+            entity_id: task.id,
+            link: "/dashboard/tasks",
+            category: "tasks",
+          });
+        }
+      } else {
+        stats.notificationsDisabled++;
       }
 
-      // ---- Email automatique (anti-doublon, skip si déjà rendu) ----
+      // ---- Email automatique (si autorisé pour cet étudiant) ----
+      if (!prefs.email) {
+        stats.emailsDisabled++;
+        continue;
+      }
+
       const result = await sendAssignmentReminderEmailToUser({
         taskId: task.id,
         userId: student.id,

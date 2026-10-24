@@ -59,15 +59,32 @@ describe("Bottom navigation — détection de la destination active", () => {
 });
 
 describe("Menu « Plus » — permissions par rôle", () => {
-  it("STUDENT : hints, recordings, notifications — ni statistiques ni administration", () => {
+  it("STUDENT : schedule, evaluations, hints, recordings, notifications, paramètres — ni statistiques ni administration", () => {
     const items = getMobileMoreItems("STUDENT");
     expect(items.map((i) => i.href)).toEqual([
+      "/dashboard/schedule",
+      "/dashboard/evaluations",
       "/dashboard/hints",
       "/dashboard/recordings",
       "/dashboard/notifications",
+      "/dashboard/settings/notifications",
     ]);
     expect(items.some((i) => i.href === "/dashboard/stats")).toBe(false);
     expect(items.some((i) => i.href === "/dashboard/admin")).toBe(false);
+  });
+
+  it("les paramètres de notifications sont accessibles à TOUS les rôles (préférences personnelles)", () => {
+    for (const role of ["STUDENT", "DELEGATE", "ADMIN"] as const) {
+      expect(getMobileMoreItems(role).map((i) => i.href)).toContain(
+        "/dashboard/settings/notifications"
+      );
+    }
+  });
+
+  it("les évaluations sont accessibles à TOUS les rôles (module lecture pour les étudiants)", () => {
+    for (const role of ["STUDENT", "DELEGATE", "ADMIN"] as const) {
+      expect(getMobileMoreItems(role).map((i) => i.href)).toContain("/dashboard/evaluations");
+    }
   });
 
   it("DELEGATE : accède aux statistiques, pas à l'administration", () => {

@@ -3,10 +3,22 @@ import { createClient } from "@/lib/supabase/server";
 import { getEmailDashboardData, type EmailNotificationType, type EmailNotificationStatus } from "@/lib/email/notifications";
 import { EmailTestForm } from "@/components/EmailTestForm";
 
-const TYPE_LABELS: Record<EmailNotificationType, string> = {
+const TYPE_LABELS: Partial<Record<EmailNotificationType, string>> = {
   AUTHENTICATION_APPROVED: "Accès accepté",
   ASSIGNMENT_3_DAYS: "Rappel J-3",
   ASSIGNMENT_1_DAY: "Rappel J-1",
+  ASSIGNMENT_CREATED: "Devoir publié",
+  ASSIGNMENT_UPDATED: "Devoir modifié",
+  EVALUATION_PUBLISHED: "Évaluation publiée",
+  EVALUATION_UPDATED: "Évaluation modifiée",
+  EVALUATION_CANCELLED: "Évaluation annulée",
+  SCHEDULE_PUBLISHED: "Séance publiée",
+  SCHEDULE_UPDATED: "Séance modifiée",
+  SESSION_CANCELLED: "Séance annulée",
+  ANNOUNCEMENT_CREATED: "Annonce de classe",
+  DOCUMENT_ADDED: "Document ajouté",
+  HINT_ADDED: "Hint ajouté",
+  RECORDING_ADDED: "Cours enregistré ajouté",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {

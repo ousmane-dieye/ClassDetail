@@ -896,5 +896,407 @@ revoke execute on function check_ai_rate_limit(text, int, int) from public;
 grant execute on function check_ai_rate_limit(text, int, int) to authenticated, service_role;
 
 -- =========================================================
+-- 19. MODULE EMPLOI DU TEMPS (équivalent migration 0016)
+-- =========================================================
+
+-- ---- 19.1 Couleur des matières (palette contrôlée) ----
+alter table subjects add column if not exists color_key text not null default 'blue';
+do $$ begin
+  alter table subjects drop constraint if exists subjects_color_key_check;
+  alter table subjects add constraint subjects_color_key_check check (
+    color_key in ('blue','indigo','violet','emerald','teal','amber','rose','red','cyan','orange','purple','yellow','fuchsia','sky','lime','pink','green','slate','stone','gray')
+  );
+exception when others then null; end $$;
+
+-- ---- 19.2 schedule_sessions (séances récurrentes) ----
+create table if not exists schedule_sessions (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  subject_id uuid not null references subjects(id) on delete cascade,
+  day_of_week smallint not null check (day_of_week between 1 and 7),
+  start_time time not null,
+  end_time time not null,
+  room text,
+  teacher text,
+  valid_from date not null default current_date,
+  valid_until date,
+  status text not null default 'DRAFT' check (status in ('DRAFT', 'PUBLISHED')),
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint schedule_sessions_time_order check (end_time > start_time),
+  constraint schedule_sessions_validity check (valid_until is null or valid_until >= valid_from),
+  constraint schedule_sessions_subject_class_fk
+    foreign key (subject_id, class_id) references subjects(id, class_id) on delete cascade
+);
+
+create unique index if not exists uq_schedule_sessions_id_class
+  on schedule_sessions(id, class_id);
+create index if not exists idx_schedule_sessions_class on schedule_sessions(class_id);
+create index if not exists idx_schedule_sessions_class_dow on schedule_sessions(class_id, day_of_week);
+create index if not exists idx_schedule_sessions_class_status on schedule_sessions(class_id, status);
+
+drop trigger if exists trg_schedule_sessions_updated on schedule_sessions;
+create trigger trg_schedule_sessions_updated before update on schedule_sessions
+  for each row execute function set_updated_at();
+
+-- Anti-chevauchement (garantie en base, courses concurrentes).
+do $$ begin
+  create extension if not exists btree_gist;
+exception when others then null; end $$;
+alter table schedule_sessions drop constraint if exists schedule_sessions_no_overlap;
+alter table schedule_sessions add constraint schedule_sessions_no_overlap
+  exclude using gist (
+    class_id with =,
+    day_of_week with =,
+    int4range(
+      (extract(hour from start_time) * 60 + extract(minute from start_time))::int4,
+      (extract(hour from end_time) * 60 + extract(minute from end_time))::int4,
+      '[)'
+    ) with &&,
+    daterange(valid_from, valid_until, '[]') with &&
+  );
+
+-- ---- 19.3 schedule_session_exceptions (exceptions datées) ----
+create table if not exists schedule_session_exceptions (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references schedule_sessions(id) on delete cascade,
+  class_id uuid not null references classes(id) on delete cascade,
+  date date not null,
+  is_cancelled boolean not null default false,
+  new_start_time time,
+  new_end_time time,
+  new_room text,
+  new_subject_id uuid references subjects(id) on delete set null,
+  note text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (session_id, date),
+  constraint schedule_exceptions_subject_class_fk
+    foreign key (new_subject_id, class_id) references subjects(id, class_id) on delete cascade,
+  constraint schedule_exceptions_time_order check (
+    (new_start_time is null and new_end_time is null)
+    or (new_start_time is not null and new_end_time is not null and new_end_time > new_start_time)
+  ),
+  constraint schedule_exceptions_not_empty check (
+    is_cancelled
+    or new_start_time is not null
+    or new_room is not null
+    or new_subject_id is not null
+  )
+);
+
+alter table schedule_session_exceptions drop constraint if exists schedule_exceptions_session_class_fk;
+alter table schedule_session_exceptions add constraint schedule_exceptions_session_class_fk
+  foreign key (session_id, class_id) references schedule_sessions(id, class_id) on delete cascade;
+
+create index if not exists idx_schedule_exceptions_class_date
+  on schedule_session_exceptions(class_id, date);
+create index if not exists idx_schedule_exceptions_session
+  on schedule_session_exceptions(session_id);
+
+drop trigger if exists trg_schedule_exceptions_updated on schedule_session_exceptions;
+create trigger trg_schedule_exceptions_updated before update on schedule_session_exceptions
+  for each row execute function set_updated_at();
+
+-- ---- 19.4 Types de notifications ----
+do $$ begin
+  alter type notification_type add value if not exists 'SCHEDULE_PUBLISHED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'SCHEDULE_UPDATED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'SESSION_CANCELLED';
+exception when duplicate_object then null; end $$;
+
+-- ---- 19.5 RLS ----
+alter table schedule_sessions enable row level security;
+alter table schedule_session_exceptions enable row level security;
+
+drop policy if exists schedule_sessions_select on schedule_sessions;
+create policy schedule_sessions_select on schedule_sessions for select
+  using (
+    is_member_of(class_id)
+    and (status = 'PUBLISHED' or is_admin() or is_delegate_of(class_id))
+  );
+drop policy if exists schedule_sessions_write on schedule_sessions;
+create policy schedule_sessions_write on schedule_sessions for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+drop policy if exists schedule_exceptions_select on schedule_session_exceptions;
+create policy schedule_exceptions_select on schedule_session_exceptions for select
+  using (is_member_of(class_id));
+drop policy if exists schedule_exceptions_write on schedule_session_exceptions;
+create policy schedule_exceptions_write on schedule_session_exceptions for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+-- ---- 19.6 Couleur des matières : délégué = couleur seule ----
+drop policy if exists subjects_update_delegate on subjects;
+create policy subjects_update_delegate on subjects for update
+  using (is_delegate_of(class_id))
+  with check (is_delegate_of(class_id));
+
+create or replace function subjects_guard_update()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+  if is_admin() then
+    return new;
+  end if;
+  if new.id is distinct from old.id
+     or new.class_id is distinct from old.class_id
+     or new.name is distinct from old.name
+     or new.code is distinct from old.code
+     or new.created_at is distinct from old.created_at then
+    raise exception 'Seule la couleur de la matière peut être modifiée (délégué)';
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists trg_subjects_guard_update on subjects;
+create trigger trg_subjects_guard_update before update on subjects
+  for each row execute function subjects_guard_update();
+
+-- ---- 19.7 Realtime ----
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='schedule_sessions') then
+    alter publication supabase_realtime add table schedule_sessions;
+  end if;
+exception when others then null; end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='schedule_session_exceptions') then
+    alter publication supabase_realtime add table schedule_session_exceptions;
+  end if;
+exception when others then null; end $$;
+
+-- =========================================================
+-- 20. MODULE ÉVALUATIONS (agenda académique) — équivalent migration 0017
+-- =========================================================
+
+-- ---- 20.1 Enums ----
+do $$ begin
+  create type evaluation_type as enum ('CC', 'DEVOIR_SURVEILLE', 'EXAMEN', 'RATTRAPAGE', 'TP', 'AUTRE');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type evaluation_status as enum ('DRAFT', 'PUBLISHED', 'CANCELLED');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter type notification_type add value if not exists 'EVALUATION_PUBLISHED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'EVALUATION_UPDATED';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type notification_type add value if not exists 'EVALUATION_CANCELLED';
+exception when duplicate_object then null; end $$;
+
+-- ---- 20.2 evaluations ----
+-- Les chapitres concernés sont TOUJOURS facultatifs : `chapters text[] not
+-- null default '{}'` — absence = tableau vide, aucune contrainte de présence.
+-- Les horaires et la salle sont facultatifs (informations parfois inconnues).
+create table if not exists evaluations (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references classes(id) on delete cascade,
+  subject_id uuid not null references subjects(id) on delete cascade,
+  title text not null check (char_length(title) between 3 and 150),
+  type evaluation_type not null default 'AUTRE',
+  description text,
+  date date not null,
+  start_time time,
+  end_time time,
+  room text,
+  chapters text[] not null default '{}',
+  status evaluation_status not null default 'DRAFT',
+  rescheduled_from date,
+  cancellation_note text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint evaluations_subject_class_fk
+    foreign key (subject_id, class_id) references subjects(id, class_id) on delete cascade,
+  constraint evaluations_time_order check (
+    (end_time is null or start_time is not null)
+    and (end_time is null or end_time > start_time)
+  ),
+  constraint evaluations_chapters_count check (coalesce(array_length(chapters, 1), 0) <= 30)
+);
+
+create unique index if not exists uq_evaluations_id_class on evaluations(id, class_id);
+create index if not exists idx_evaluations_class_id on evaluations(class_id);
+create index if not exists idx_evaluations_class_date on evaluations(class_id, date);
+create index if not exists idx_evaluations_class_status on evaluations(class_id, status);
+create index if not exists idx_evaluations_subject_id on evaluations(subject_id);
+create index if not exists idx_evaluations_date on evaluations(date);
+
+drop trigger if exists trg_evaluations_updated on evaluations;
+create trigger trg_evaluations_updated before update on evaluations
+  for each row execute function set_updated_at();
+
+-- ---- 20.3 Ressources de révision (facultatives) ----
+do $$ begin
+  alter table documents add constraint documents_id_class_unique unique (id, class_id);
+exception when duplicate_table then null; end $$;
+do $$ begin
+  alter table hints add constraint hints_id_class_unique unique (id, class_id);
+exception when duplicate_table then null; end $$;
+
+create table if not exists evaluation_documents (
+  evaluation_id uuid not null references evaluations(id) on delete cascade,
+  class_id uuid not null references classes(id) on delete cascade,
+  document_id uuid not null references documents(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (evaluation_id, document_id),
+  constraint evaluation_documents_eval_class_fk
+    foreign key (evaluation_id, class_id) references evaluations(id, class_id) on delete cascade,
+  constraint evaluation_documents_doc_class_fk
+    foreign key (document_id, class_id) references documents(id, class_id) on delete cascade
+);
+create index if not exists idx_evaluation_documents_document on evaluation_documents(document_id);
+
+create table if not exists evaluation_hints (
+  evaluation_id uuid not null references evaluations(id) on delete cascade,
+  class_id uuid not null references classes(id) on delete cascade,
+  hint_id uuid not null references hints(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (evaluation_id, hint_id),
+  constraint evaluation_hints_eval_class_fk
+    foreign key (evaluation_id, class_id) references evaluations(id, class_id) on delete cascade,
+  constraint evaluation_hints_hint_class_fk
+    foreign key (hint_id, class_id) references hints(id, class_id) on delete cascade
+);
+create index if not exists idx_evaluation_hints_hint on evaluation_hints(hint_id);
+
+-- ---- 20.4 RLS ----
+alter table evaluations enable row level security;
+alter table evaluation_documents enable row level security;
+alter table evaluation_hints enable row level security;
+
+drop policy if exists evaluations_select on evaluations;
+create policy evaluations_select on evaluations for select
+  using (
+    is_member_of(class_id)
+    and (status <> 'DRAFT' or is_admin() or is_delegate_of(class_id))
+  );
+drop policy if exists evaluations_write on evaluations;
+create policy evaluations_write on evaluations for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+drop policy if exists evaluation_documents_select on evaluation_documents;
+create policy evaluation_documents_select on evaluation_documents for select
+  using (is_member_of(class_id));
+drop policy if exists evaluation_documents_write on evaluation_documents;
+create policy evaluation_documents_write on evaluation_documents for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+drop policy if exists evaluation_hints_select on evaluation_hints;
+create policy evaluation_hints_select on evaluation_hints for select
+  using (is_member_of(class_id));
+drop policy if exists evaluation_hints_write on evaluation_hints;
+create policy evaluation_hints_write on evaluation_hints for all
+  using (is_admin() or is_delegate_of(class_id))
+  with check (is_admin() or is_delegate_of(class_id));
+
+-- ---- 20.5 Realtime ----
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='evaluations') then
+    alter publication supabase_realtime add table evaluations;
+  end if;
+exception when others then null; end $$;
+
+-- ---------------------------------------------------------
+-- 21. PRÉFÉRENCES DE NOTIFICATIONS (migration 0018_notification_preferences.sql)
+-- ---------------------------------------------------------
+-- Une ligne par (utilisateur, catégorie). Valeur par défaut = AUCUNE ligne :
+-- les comptes créés avant la migration conservent le comportement de ClassPulse.
+create table if not exists notification_preferences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  category text not null check (
+    category in ('ASSIGNMENTS','ASSIGNMENT_REMINDERS','EVALUATIONS','SCHEDULE','ANNOUNCEMENTS','RESOURCES','CHAT')
+  ),
+  in_app_enabled boolean not null default true,
+  email_enabled boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint uq_notification_preferences_user_category unique (user_id, category)
+);
+
+create index if not exists idx_notification_prefs_user
+  on notification_preferences(user_id);
+
+drop trigger if exists trg_notification_preferences_updated on notification_preferences;
+create trigger trg_notification_preferences_updated before update on notification_preferences
+  for each row execute function set_updated_at();
+
+-- RLS : propriétaire uniquement — aucune policy admin : les préférences sont
+-- personnelles et ne doivent jamais être lues ni modifiées par autrui.
+alter table notification_preferences enable row level security;
+
+drop policy if exists notification_prefs_select on notification_preferences;
+create policy notification_prefs_select on notification_preferences for select
+  using (user_id = auth.uid());
+
+drop policy if exists notification_prefs_insert on notification_preferences;
+create policy notification_prefs_insert on notification_preferences for insert
+  with check (user_id = auth.uid());
+
+drop policy if exists notification_prefs_update on notification_preferences;
+create policy notification_prefs_update on notification_preferences for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists notification_prefs_delete on notification_preferences;
+create policy notification_prefs_delete on notification_preferences for delete
+  using (user_id = auth.uid());
+
+-- ---------------------------------------------------------
+-- 22. EMAILS PÉDAGOGIQUES — colonnes d'entité + anti-doublon (0018)
+-- ---------------------------------------------------------
+-- `assignment_email_notifications` trace tous les emails envoyés (historique
+-- + anti-doublon). Les emails d'événements (évaluations, emploi du temps,
+-- annonces, ressources, devoirs) s'identifient par une entité polymorphe.
+alter table assignment_email_notifications add column if not exists entity_type text;
+alter table assignment_email_notifications add column if not exists entity_id uuid;
+
+alter table assignment_email_notifications
+  drop constraint if exists assignment_email_notifications_notification_type_check;
+alter table assignment_email_notifications
+  add constraint assignment_email_notifications_notification_type_check
+  check (notification_type in (
+    'AUTHENTICATION_APPROVED','ASSIGNMENT_3_DAYS','ASSIGNMENT_1_DAY',
+    'ASSIGNMENT_CREATED','ASSIGNMENT_UPDATED',
+    'EVALUATION_PUBLISHED','EVALUATION_UPDATED','EVALUATION_CANCELLED',
+    'SCHEDULE_PUBLISHED','SCHEDULE_UPDATED','SESSION_CANCELLED',
+    'ANNOUNCEMENT_CREATED',
+    'DOCUMENT_ADDED','HINT_ADDED','RECORDING_ADDED'
+  ));
+
+create unique index if not exists uq_email_notif_sent_entity
+  on assignment_email_notifications(user_id, notification_type, entity_type, entity_id)
+  where entity_id is not null and status = 'SENT';
+
+create index if not exists idx_email_notifs_entity
+  on assignment_email_notifications(entity_id);
+
+-- L'index « sans devoir » historique ne doit plus couvrir les emails à entité
+-- (sinon un seul email d'évaluation par utilisateur pour toute la plateforme).
+drop index if exists uq_email_notif_sent_auth;
+create unique index if not exists uq_email_notif_sent_auth
+  on assignment_email_notifications(user_id, notification_type)
+  where assignment_id is null and entity_id is null and status = 'SENT';
+
+-- =========================================================
 -- FIN DU SCHEMA
 -- =========================================================

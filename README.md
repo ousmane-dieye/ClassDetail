@@ -15,6 +15,8 @@ Plateforme SaaS académique multi-classes pour étudiants : tâches, documents, 
 - [Architecture temps réel](#architecture-temps-réel)
 - [Stack](#stack)
 - [Centre de notifications](#centre-de-notifications)
+- [Emploi du temps](#emploi-du-temps)
+- [Évaluations](#évaluations)
 - [Assistant IA contextuel](#assistant-ia-contextuel)
 - [Outils IA](#outils-ia)
 - [Prérequis](#prérequis)
@@ -55,6 +57,8 @@ L'application n'est pas destinée aux enseignants : elle est pensée pour les é
 - **Cours enregistrés** : gérés par délégués/admins, consultables par tous.
 - **Chat de classe en temps réel** via Supabase Realtime, isolé par classe, avec **annonces** épinglées (délégués/admins) notifiant toute la classe.
 - **Centre de notifications unifié** : compteur temps réel, filtres par catégorie, marquage lu/tout lu, regroupement par date, navigation vers l'élément.
+- **Emploi du temps** : calendrier hebdomadaire sur desktop, agenda journalier sur mobile, séances récurrentes avec exceptions ponctuelles datées, couleur stable par matière, publication contrôlée par les délégués, notifications de publication et d'annulation.
+- **Évaluations** : CC, devoirs surveillés, examens, rattrapages, TP… créés par les délégués/admins en brouillon ou publiés directement, **chapitres concernés et ressources de révision toujours facultatifs**, annulation tracée avec motif, report daté, avertissements de conflit (non bloquants) avec les autres évaluations et avec les cours.
 - **Assistant IA contextuel** : répond avec les vraies données de la plateforme (RBAC respecté), propose des actions de navigation validées par une liste blanche, streaming de la réponse.
 - **Statistiques** calculées en direct depuis PostgreSQL (aucune donnée fictive/hardcodée) : par classe pour les délégués, globales + par classe pour les admins.
 - **Sécurité par Row Level Security** : chaque règle métier (isolation par classe, permissions par rôle) est appliquée au niveau PostgreSQL, pas seulement côté frontend.
@@ -126,10 +130,67 @@ Page : `/dashboard/notifications`. Cloche : `/dashboard` (compteur en temps rée
 
 - **NotificationService** : `lib/notifications/service.ts` — `createNotification({ userId, type, title, message, entityType, entityId, link })` + `notifyClassMembers`.
 - Chaque notification : type, titre, message, utilisateur concerné, date, lien interne, statut lu/non lu, catégorie dérivée du type.
-- Filtres : Toutes / Non lues / Devoirs / Cours / Documents / Hints / Annonces / Système.
+- Filtres : Toutes / Non lues / Devoirs / Emploi du temps / Évaluations / Cours / Documents / Hints / Annonces / Système.
 - Actions : "Tout marquer comme lu", clic → ouvre l'élément (devoir, document…), pagination incrémentale, regroupement par date (Aujourd'hui / Hier / date).
 
-Types couverts : `TASK_CREATED`, `ASSIGNMENT_CREATED`, `ASSIGNMENT_UPDATED`, `TASK_COMPLETED`, `TASK_REMINDER`, `DOCUMENT_ADDED`, `HINT_ADDED`, `COURSE_SAVED`, `COURSE_UPDATED`, `RECORDING_ADDED`, `ANNOUNCEMENT_CREATED`, `REGISTRATION_ACCEPTED`, `REGISTRATION_REJECTED`, `DELEGATE_APPOINTED`, `DELEGATE_REMOVED`.
+Types couverts : `TASK_CREATED`, `ASSIGNMENT_CREATED`, `ASSIGNMENT_UPDATED`, `TASK_COMPLETED`, `TASK_REMINDER`, `DOCUMENT_ADDED`, `HINT_ADDED`, `COURSE_SAVED`, `COURSE_UPDATED`, `RECORDING_ADDED`, `ANNOUNCEMENT_CREATED`, `REGISTRATION_ACCEPTED`, `REGISTRATION_REJECTED`, `DELEGATE_APPOINTED`, `DELEGATE_REMOVED`, `SCHEDULE_PUBLISHED`, `SCHEDULE_UPDATED`, `SESSION_CANCELLED` (catégorie `schedule`), `EVALUATION_PUBLISHED`, `EVALUATION_UPDATED`, `EVALUATION_CANCELLED` (catégorie `evaluations`).
+
+## Paramètres de notifications
+
+Page : `/dashboard/settings/notifications` (entrée « Mon compte » de la sidebar desktop et menu « Plus » mobile, tous rôles).
+
+Chaque utilisateur choisit **par catégorie** ses deux canaux, indépendamment l'un de l'autre :
+
+| Catégorie | Identifiant | Canal interne (défaut) | E-mail (défaut) | Événements réellement branchés |
+|---|---|---|---|---|
+| Devoirs | `ASSIGNMENTS` | activé | désactivé | `ASSIGNMENT_CREATED`, `ASSIGNMENT_UPDATED` (email) / + `TASK_CREATED`, `TASK_COMPLETED` (interne uniquement) |
+| Rappels de devoirs | `ASSIGNMENT_REMINDERS` | activé | **activé** | `TASK_REMINDER` (cron J-3 / J-1) + emails `ASSIGNMENT_3_DAYS` / `ASSIGNMENT_1_DAY` |
+| Évaluations | `EVALUATIONS` | activé | **activé** | `EVALUATION_PUBLISHED`, `EVALUATION_UPDATED`, `EVALUATION_CANCELLED` |
+| Emploi du temps | `SCHEDULE` | activé | désactivé | `SCHEDULE_PUBLISHED`, `SCHEDULE_UPDATED`, `SESSION_CANCELLED` |
+| Annonces et communications | `ANNOUNCEMENTS` | activé | désactivé | `ANNOUNCEMENT_CREATED` |
+| Ressources pédagogiques | `RESOURCES` | activé | désactivé | `DOCUMENT_ADDED`, `HINT_ADDED`, `RECORDING_ADDED` |
+| Chat et messages | `CHAT` | activé | désactivé | *aucun événement notifié aujourd'hui* : les messages du chat ne déclenchent aucune notification, la catégorie est prête pour leur arrivée |
+
+- **Absence de préférence = valeurs par défaut** : les comptes créés avant la migration conservent exactement le comportement de ClassPulse (rien à enregistrer, rien perdu). Une préférence enregistrée est toujours respectée ; seule l'action « Rétablir les défauts » supprime les lignes pour revenir aux valeurs par défaut.
+- **Événements système hors préférences** : `REGISTRATION_ACCEPTED`, `REGISTRATION_REJECTED`, `DELEGATE_APPOINTED`, `DELEGATE_REMOVED` sont toujours notifiés en interne.
+- **Emails essentiels hors préférences** : confirmation d'inscription, réinitialisation de mot de passe, e-mail d'acceptation de compte et e-mails de sécurité restent indépendants de cette page.
+- **Application côté serveur uniquement** : `lib/notifications/preferences.ts` (`loadChannels`, lecture groupée) filtre la création des notifications (`lib/notifications/service.ts`), le dispatch d'emails (`lib/email/dispatch.ts`) et le cron des rappels — l'interface ne fait qu'afficher et enregistrer.
+- **Mode dégradé** : si la lecture des préférences échoue, ce sont les valeurs par défaut qui s'appliquent (jamais une coupure généralisée ni une ouverture générale) et l'erreur est journalisée.
+- **RLS** : `notification_preferences` n'a que des policies « propriétaire » (`user_id = auth.uid()`) — aucun utilisateur, aucun administrateur, ne peut lire ou modifier les préférences d'autrui.
+
+Code : `lib/constants/notificationPreferences.ts` (identifiants, défauts, libellés, mapping type → catégorie), `lib/notifications/preferences.ts` (lecture), `actions/notification-preferences.ts` (enregistrement / réinitialisation), `components/settings/NotificationPreferencesForm.tsx`, `components/ui/Switch.tsx` (interrupteur accessible).
+
+## Emploi du temps
+
+Page : `/dashboard/schedule` (entrée de la sidebar desktop et du menu « Plus » mobile — les 5 emplacements de la bottom nav ne changent pas). Carte « Aujourd'hui » sur le dashboard étudiant.
+
+- **Deux expériences selon la largeur réelle de l'écran** (bascule CSS, aucun sniflage d'appareil) : grille hebdomadaire sur desktop (≥ lg) avec jour actuel et trait d'heure courante ; agenda journalier + strip de jours sur mobile/tablette (< lg), jamais une grille rétrécie. Navigation semaine/jour locale, sans rechargement.
+- **Séances récurrentes** : jour ISO (lundi → dimanche), plage horaire, validité (bornes inclusives, fin inclusive), salle, enseignant, statut `DRAFT` / `PUBLISHED`.
+- **Exceptions ponctuelles datées** : annulation, déplacement horaire ou changement de salle sur une occurrence précise — la règle récurrente n'est jamais altérée.
+- **Couleur par matière persistée en base** (`subjects.color_key`) : palette contrôlée de **20 couleurs** accessible en clair/sombre (`lib/constants/subjectColors.ts`, synchronisée avec le CHECK SQL par test) — chaque matière d'une classe a sa propre couleur jusqu'à 20 matières (ensuite la couleur boucle modulo 20, mais le nom reste toujours affiché : la couleur n'est jamais le seul identifiant). Un délégué ne peut changer que les couleurs des matières **de sa classe** (trigger `subjects_guard_update`, seule la colonne `color_key` est modifiable hors admin).
+- **Conflits interdits, garantis en base** : pré-détecteur serveur (`lib/schedule/conflicts.ts`, message clair) doublé d'une contrainte d'exclusion GiST (`schedule_sessions_no_overlap`) — l'anti-course contre la double écriture est assuré au niveau PostgreSQL (SQLSTATE `23P01`).
+- **Fuseau unique `Africa/Dakar`** : les dates/heures circulent en ISO local, aucun calcul de fuseau côté client.
+- **Permissions** : `STUDENT` = lecture des séances publiées ; `DELEGATE` = gestion complète de **sa** classe (brouillons visibles) ; `ADMIN` = toutes les classes (sélecteur de classe via `?class=`). Les brouillons ne sont jamais notifiés.
+- **Notifications** (système unifié, catégorie `schedule`) : `SCHEDULE_PUBLISHED` regroupée lors d'une publication de semaine, `SCHEDULE_UPDATED` ciblée par classe modifiée, `SESSION_CANCELLED` sur les classes impactées par l'annulation.
+- **Realtime** : la page s'abonne aux insertions/mises à jour/suppressions de `schedule_sessions` et `schedule_session_exceptions` (filtre par classe), et le badge « Gestion active / Lecture seule » reflète le rôle courant.
+- **Carte « Aujourd'hui »** (`TodayScheduleCard`) : prochain cours, cours en cours, états vides distincts (« aucun cours » vs « emploi du temps non publié »).
+
+Migration : `supabase/migrations/0016_schedule.sql` (jamais exécutée automatiquement — voir l'ordre ci-dessous). Pour une base neuve, la section « Emploi du temps » est incluse dans `supabase/schema.sql`. Code : `actions/schedule.ts`, `components/schedule/*`, `lib/schedule/*`, page `app/dashboard/schedule/page.tsx`.
+
+## Évaluations
+
+Pages : `/dashboard/evaluations` (liste, entrée sidebar desktop + menu « Plus » mobile) et `/dashboard/evaluations/:id` (détail, lien des notifications). Carte « Prochaines évaluations » sur le dashboard étudiant et dans l'emploi du temps (bandeau facultatif — l'emploi du temps reste entier sans lui).
+
+- **Cycle de vie simple** : `DRAFT` → `PUBLISHED` → `CANCELLED` (aucun statut « reportée » : un report est un changement de date, tracé en `rescheduled_from` et signalé par un badge). Les brouillons ne sont **jamais** exposés aux étudiants (RLS + contrôles serveur).
+- **Chapitres concernés : 100 % facultatifs** — colonne `chapters text[] not null default '{}'`, aucun RLS/schema Zod n'exige leur présence, aucune valeur artificielle (« À définir »…) n'est jamais injectée. Huit tests dédiés verrouillent la règle (`tests/evaluations-validation.test.ts`).
+- **Ressources de révision facultatives** : réutilisation pure des modules `documents` / `hints` existants (aucun second stockage de fichiers) via les tables de jointure `evaluation_documents` / `evaluation_hints` (FK composite vers `(id, class_id)`, isolation S3).
+- **Rôles** : `STUDENT` lecture seule, `DELEGATE` gestion de sa classe, `ADMIN` toutes classes — vérifié côté serveur dans **chaque** Server Action + RLS PostgreSQL en dernière ligne (l'UI ne décide de rien).
+- **Conflits = avertissements non bloquants** : chevauchement avec une autre évaluation ou avec un cours de l'emploi du temps, détecté uniquement quand l'horodatage est complet, renvoyé sur le succès et affiché en bandeau (`lib/evaluations/conflicts.ts`, pur et testé).
+- **Notifications unifiées** (catégorie `evaluations`) : `EVALUATION_PUBLISHED` à la publication, `EVALUATION_UPDATED` sur modification matérielle ou report, `EVALUATION_CANCELLED` à l'annulation et au retrait d'une publiée — **jamais** pour un brouillon, **jamais** pour une édition de détail (chapitres/description seuls).
+- **Annulation tracée** : l'évaluation reste visible avec son statut, un motif facultatif (300 car.) et sa date d'origine ; la suppression d'une publiée notifie explicitement un retrait.
+- **Realtime** : la liste s'abonne aux `evaluations` de la classe (insert/update/delete) comme l'emploi du temps.
+
+Migration : `supabase/migrations/0017_evaluations.sql` (jamais exécutée automatiquement — voir l'ordre ci-dessous). Pour une base neuve, la section « Évaluations » est incluse dans `supabase/schema.sql`. Code : `actions/evaluations.ts`, `components/evaluations/*`, `lib/evaluations/*`, pages `app/dashboard/evaluations/*`.
 
 ## Assistant IA contextuel
 
@@ -150,6 +211,8 @@ Bouton flottant ✨ accessible sur tout le tableau de bord (`/dashboard`). Panne
 - `getMyCourses` / `getMySavedCourses` — cours enregistrés.
 - `getMyDocuments` — documents pédagogiques.
 - `getMyHints` — anciens devoirs/examens.
+- `getMySchedule` — emploi du temps d'un jour. Le jour demandé (« lundi », « mardi »… ou numéro ISO 1-7) est transcrit dans le paramètre `weekday` et **converti en date par le serveur** (prochaine occurrence selon la pendule de l'app) : le modèle IA ne calcule jamais de date lui-même (correction d'un bug où « lundi » renvoyait une date fausse). Annulations et créneaux modifiés via exceptions datées ; séances publiées uniquement.
+- `getMyEvaluations` — évaluations à venir (type, date, heures, salle, chapitres si renseignés, signalement « reportée ») ; brouillons jamais exposés, annulées conservées.
 - `getMyNotifications` — dernières notifications (lu/non lu).
 - `searchPlatform` — recherche dans les ressources (limitée à la classe via RLS).
 - `suggestActions` — boutons de navigation (liste blanche uniquement).
@@ -193,8 +256,21 @@ Pour une base **existante** déjà déployée avant la plateforme temps réel, e
 5. `supabase/migrations/0005_security_realtime_fixes.sql` (sécurité + `task_completions` temps réel)
 6. `supabase/migrations/0006_remove_messaging.sql` (suppression des tables de messagerie privée)
 7. `supabase/migrations/0007_chat_realtime.sql` (publication Realtime du chat de classe)
+8. `supabase/migrations/0008_unique_profile_email.sql` (unicité d'email insensible à la casse)
+9. `supabase/migrations/0009_s1_profiles_email_restriction.sql` (confidentialité des emails de profil)
+10. `supabase/migrations/0010_s2_chat_announcements_restriction.sql` (anti-usurpation d'annonces)
+11. `supabase/migrations/0011_s3_cross_class_restriction.sql` (anti-relations cross-class)
+12. `supabase/migrations/0012_s4_no_auto_admin.sql` (aucun ADMIN automatique à l'inscription)
+13. `supabase/migrations/0013_s6_notifications_readonly_fields.sql` (notifications en lecture seule)
+14. `supabase/migrations/0014_s8_delegate_rights_alignment.sql` (droits délégué documents/hints)
+15. `supabase/migrations/0015_s9_ai_rate_limits.sql` (rate limiting IA distribué)
+16. `supabase/migrations/0016_schedule.sql` (emploi du temps : couleurs de matières, séances récurrentes, exceptions datées, contrainte anti-chevauchement GiST, RLS, notifications `schedule`)
+17. `supabase/migrations/0017_evaluations.sql` (évaluations : enums, chapitres facultatifs, jointures ressources à FK composite, RLS (brouillons invisibles aux étudiants), Realtime, notifications `evaluations`)
+18. `supabase/migrations/0018_notification_preferences.sql` (préférences de notifications : table `notification_preferences` + RLS propriétaire, colonnes d'entité et index d'anti-doublon des emails pédagogiques)
 
 Tout est écrit pour être ré-exécutable sans erreur (`if not exists` / `drop policy if exists`).
+
+⚠️ Les migrations ne s'exécutent **jamais** automatiquement : `0016_schedule.sql`, `0017_evaluations.sql` et `0018_notification_preferences.sql` doivent être appliquées manuellement dans le SQL Editor (staging d'abord, dans cet ordre) — elles n'ont encore été exécutées sur aucune base.
 
 Puis créez votre premier ADMIN (jamais automatiquement) :
 
@@ -341,12 +417,14 @@ classpulse/
 │   │   ├── student/ delegate/ admin/         # Tableaux de bord par rôle
 │   │   ├── tasks/ documents/ hints/ recordings/
 │   │   ├── chat/ notifications/ stats/
+│   │   ├── schedule/ evaluations/            # Emploi du temps + évaluations
 │   ├── api/assistant/route.ts               # Assistant IA (SSE + outils)
 │   ├── api/cron/reminders, cleanup          # Rappels + expiration
 ├── actions/                                 # Server Actions (mutations)
 ├── components/
 │   ├── notifications/NotificationsCenter.tsx
 │   ├── assistant/                           # AssistantFab, AssistantPanel, Markdown
+│   ├── schedule/ evaluations/               # Vues des modules planning
 │   ├── Sidebar, ChatRoom, NotificationBell, RealtimeListSync, TaskCard, …
 ├── lib/
 │   ├── ai/ (openai.ts, tools.ts, personalize.ts)
@@ -357,9 +435,10 @@ classpulse/
 │   ├── supabase/ (client, server, admin)
 │   ├── email/ (emailService, reminders, templates, notifications)
 │   ├── validation/schemas.ts
+│   ├── evaluations/ (constants, conflicts, listing, queries)
 │   └── business/ (taskStatus, permissions)
 ├── types/database.types.ts
-├── tests/                                   # 73 tests unitaires
+├── tests/                                   # 363 tests unitaires
 ├── supabase/schema.sql, seed.sql, migrations/
 ├── vercel.json, .env.example, .eslintrc.json
 └── README.md
@@ -371,7 +450,7 @@ classpulse/
 npm install
 npm run dev          # http://localhost:3000
 npm run lint         # ESLint (next/core-web-vitals)
-npm run test         # Vitest (73 tests)
+npm run test         # Vitest (363 tests)
 npm run test:watch
 ```
 
@@ -386,14 +465,17 @@ Déploiement Vercel : poussez sur un dépôt, importez sur [vercel.com](https://
 
 ## Tests
 
-`npm run test` — 52 tests couvrent :
+`npm run test` — 250 tests couvrent :
 
 - **Tâches** : couleurs J-6→J, jours restants, suppression 24h (`tests/taskStatus.test.ts`).
 - **Emails** : expéditeur admin, anti-doublon, statut FAILED sans mot de passe, OpenAI down → email envoyé (`tests/emailService.test.ts`).
 - **Rappels** : J-3/J-1, devoir rendu, sélection (`tests/reminders.test.ts`).
-- **Notifications** : catégorisation des types, insertion, notification de classe avec exclusion (`tests/notifications.test.ts`).
+- **Notifications** : catégorisation des types (dont les 3 types `schedule` et les 3 types `evaluations`), insertion, notification de classe avec exclusion (`tests/notifications.test.ts`).
 - **Assistant** : liste blanche des liens, sanitisation des actions (`tests/assistantTools.test.ts`).
 - **Permissions** : matrice RBAC complète (`tests/permissions.test.ts`).
+- **Emploi du temps** : palette de couleurs synchronisée avec le CHECK SQL, dates/fuseau Africa/Dakar, détection de conflits, expansion récurrent + exceptions (annulation, déplacement, salle, matière), prochain cours, layout anti-chevauchement, matrice STUDENT/DELEGATE/ADMIN (`tests/schedule-*.test.ts`).
+- **Évaluations** : chapitres facultatifs (8 tests dédiés), horaires facultatifs, ressources facultatives, conflits non bloquants (évaluation/évaluation, évaluation/cours), listing/tri/groupement/filtres, matrice STUDENT/DELEGATE/ADMIN des Server Actions (brouillon jamais notifié, édition de détail jamais notifiée, annulation tracée), garanties SQL de la migration 0017 (`tests/evaluations-*.test.ts`).
+- **Navigation mobile** : bottom nav à 5 emplacements, permissions du menu « Plus » incluant `/dashboard/schedule` et `/dashboard/evaluations` pour tous les rôles (`tests/mobile-nav.test.ts`).
 
 ## Dépannage
 

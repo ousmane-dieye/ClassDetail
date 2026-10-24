@@ -7,7 +7,9 @@ import type { UserRole } from "@/types/database.types";
 import { useSidebar } from "@/components/SidebarContext";
 import {
   LayoutDashboard,
+  CalendarDays,
   CheckSquare,
+  ClipboardCheck,
   FileText,
   Lightbulb,
   Video,
@@ -21,6 +23,7 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
@@ -31,6 +34,8 @@ import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 
 const NAV_MAIN = [
   { href: "/dashboard", label: "Accueil", icon: LayoutDashboard, exact: true },
+  { href: "/dashboard/schedule", label: "Emploi du temps", icon: CalendarDays },
+  { href: "/dashboard/evaluations", label: "Évaluations", icon: ClipboardCheck },
   { href: "/dashboard/tasks", label: "Tâches & Devoirs", icon: CheckSquare },
   { href: "/dashboard/documents", label: "Documents", icon: FileText },
   { href: "/dashboard/hints", label: "Hints & Sujets", icon: Lightbulb },
@@ -43,6 +48,10 @@ const NAV_COMMUNITY = [
 ];
 
 const NAV_STATS = { href: "/dashboard/stats", label: "Statistiques", icon: BarChart3 };
+
+const NAV_ACCOUNT = [
+  { href: "/dashboard/settings/notifications", label: "Paramètres", icon: Settings },
+];
 
 /* ──────────────────────────────────────────────────────────────────
    Tooltip wrapper (CSS-only)
@@ -289,6 +298,13 @@ function SidebarContent({
         <NavGroup
           title="Communauté"
           items={communityItems}
+          role={role}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+        <NavGroup
+          title="Mon compte"
+          items={NAV_ACCOUNT}
           role={role}
           collapsed={collapsed}
           onNavigate={onNavigate}
