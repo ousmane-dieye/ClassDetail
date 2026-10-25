@@ -9,6 +9,11 @@ import {
   removeDelegateAction,
 } from "@/actions/classes";
 import { decideRegistrationAction } from "@/actions/auth";
+import {
+  StudentsManagementSection,
+  type StudentItem,
+  type ClassOption,
+} from "@/components/admin/StudentsManagementSection";
 import Link from "next/link";
 import {
   Shield,
@@ -75,8 +80,9 @@ export default async function AdminDashboard() {
       .order("created_at", { ascending: true }),
     admin
       .from("profiles")
-      .select("id, first_name, last_name, email, role, class_id")
-      .in("role", ["STUDENT", "DELEGATE"]),
+      .select("id, first_name, last_name, email, role, class_id, created_at")
+      .in("role", ["STUDENT", "DELEGATE"])
+      .order("first_name", { ascending: true }),
   ]);
 
   const classes = classesResult.data;
@@ -99,17 +105,28 @@ export default async function AdminDashboard() {
     console.error("[AdminDashboard] Erreurs Supabase:", JSON.stringify(diagErrors, null, 2));
   }
 
-  const membersList = (members ?? []) as any[];
-  const memberGroups: { title: string; classId: string; members: any[] }[] = (classes ?? [])
-    .map((c) => ({
-      title: `${c.name} — ${c.level} (${c.academic_year})`,
-      classId: c.id,
-      members: membersList.filter((m) => m.class_id === c.id),
-    }))
-    .filter((g) => g.members.length > 0);
-  const orphans = membersList.filter((m) => !m.class_id);
-  if (orphans.length > 0)
-    memberGroups.push({ title: "Sans classe", classId: "", members: orphans });
+  const studentItems: StudentItem[] = (members ?? []).map((m: any) => {
+    const classInfo = (classes ?? []).find((c) => c.id === m.class_id);
+    return {
+      id: m.id,
+      firstName: m.first_name,
+      lastName: m.last_name,
+      email: m.email,
+      role: m.role as "STUDENT" | "DELEGATE",
+      classId: m.class_id,
+      className: classInfo?.name ?? null,
+      classLevel: classInfo?.level ?? null,
+      academicYear: classInfo?.academic_year ?? null,
+      createdAt: m.created_at ?? null,
+    };
+  });
+
+  const classesList: ClassOption[] = (classes ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    level: c.level,
+    academicYear: c.academic_year,
+  }));
 
   const pendingCount = (pendingRequests ?? []).length;
 
@@ -247,78 +264,8 @@ export default async function AdminDashboard() {
         </div>
       </section>
 
-      {/* ── Delegate Management ── */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
-            <UserCheck size={16} className="text-primary" />
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Gestion des Délégués par Classe
-          </h2>
-        </div>
-
-        {memberGroups.length === 0 ? (
-          <EmptyState title="Aucun membre" description="Aucun étudiant inscrit pour le moment." />
-        ) : (
-          <div className="space-y-4">
-            {memberGroups.map((group) => (
-              <Card key={group.title}>
-                <CardHeader className="pb-3 pt-4 px-5">
-                  <div className="flex items-center gap-2">
-                    <BookOpen size={14} className="text-muted-foreground" />
-                    <CardTitle className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
-                      {group.title}
-                    </CardTitle>
-                    <Badge variant="outline" className="ml-auto text-[10px]">
-                      {group.members.length} membre(s)
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-4 space-y-2">
-                  {group.members.map((m: any) => (
-                    <div
-                      key={m.id}
-                      className="flex flex-col gap-2 rounded-xl border border-border/70 bg-background/50 p-3 sm:flex-row sm:items-center sm:justify-between transition-colors hover:bg-muted/40"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary text-xs font-bold">
-                          {m.first_name?.[0] ?? "?"}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">
-                            {m.first_name} {m.last_name}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
-                        </div>
-                        {m.role === "DELEGATE" && (
-                          <Badge variant="warning" className="shrink-0">★ Délégué</Badge>
-                        )}
-                      </div>
-
-                      {m.role === "DELEGATE" ? (
-                        <form action={async () => { "use server"; await removeDelegateAction(m.id); }}>
-                          <Button size="sm" variant="danger" className="gap-1.5 shrink-0">
-                            <UserX size={13} />
-                            <span>Révoquer</span>
-                          </Button>
-                        </form>
-                      ) : (
-                        <form action={async () => { "use server"; await appointDelegateAction(m.id); }}>
-                          <Button size="sm" variant="default" className="gap-1.5 shrink-0">
-                            <UserCheck size={13} />
-                            <span>Promouvoir</span>
-                          </Button>
-                        </form>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* ── Students Management (Search, Filters, Roles, Removal & Deletion) ── */}
+      <StudentsManagementSection students={studentItems} classes={classesList} />
 
       {/* ── Classes & Subjects Management ── */}
       <div className="grid gap-8 lg:grid-cols-2">
