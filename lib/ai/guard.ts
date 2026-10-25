@@ -82,7 +82,7 @@ const CATEGORIES: { patterns: RegExp[] }[] = [
 
 export const ASSISTANT_REFUSAL =
   "Je ne peux pas répondre à cette question : mon rôle est limité à ClassPulse et à la vie de votre classe " +
-  "(tâches, devoirs, cours, documents, hints, notifications, organisation). " +
+  "(tâches, devoirs, cours, documents, hints, emploi du temps, évaluations, notifications, organisation). " +
   "Posez une question sur votre classe, ou utilisez les boutons ci-dessous.";
 
 /** Retourne null si dans le périmètre, sinon un message de refus. */

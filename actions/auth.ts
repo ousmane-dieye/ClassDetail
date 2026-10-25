@@ -5,12 +5,29 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { loginSchema, registerSchema, resubmitSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validation/schemas";
 import { createNotification } from "@/lib/notifications/service";
 import { handleRegistrationDecisionEmail } from "@/lib/email/notifications";
+import { canValidateRegistration } from "@/lib/business/permissions";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getClientIp } from "@/lib/security/ip";
 import { checkAuthLoginRateLimits, checkPasswordResetRateLimits } from "@/lib/security/rateLimit";
+import {
+  loginFailureErrorMessage,
+  rateLimitErrorMessage,
+  signUpErrorMessage,
+  updatePasswordErrorMessage,
+} from "@/lib/security/authMessages";
 import { verifyTurnstileToken } from "@/lib/security/turnstile";
 import { logSecurityEvent } from "@/lib/security/logger";
+import type { MembershipTransitionResult } from "@/types/database.types";
+
+/** Codes retour de classpulse_decide_request → messages destinés à l'utilisateur. */
+const DECIDE_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_INPUT: "Demande invalide",
+  INVALID_DECISION: "Décision invalide",
+  NOT_FOUND: "Demande introuvable",
+  NOT_PENDING: "Cette demande a déjà été traitée (décision définitive).",
+  FORBIDDEN: "Vous n'êtes pas autorisé à traiter cette demande.",
+};
 
 export async function registerAction(formData: FormData) {
   const parsed = registerSchema.safeParse({
@@ -51,7 +68,7 @@ export async function registerAction(formData: FormData) {
   });
 
   if (authError || !authData.user) {
-    return { error: authError?.message ?? "Erreur lors de la création du compte" };
+    return { error: signUpErrorMessage(authError) };
   }
 
   // Garde-fou : si signUp a renvoyé un compte existant (email déjà pris mais
@@ -230,7 +247,7 @@ export async function loginAction(formData: FormData) {
       bucket: rateLimitResult.bucket,
       reason: rateLimitResult.unavailable ? "Infrastructure rate limit indisponible (fail-closed)" : "Seuil maximal de tentatives dépassé",
     });
-    return { error: "Identifiants invalides ou trop de tentatives. Veuillez réessayer plus tard." };
+    return { error: rateLimitErrorMessage(rateLimitResult) };
   }
 
   // 2. Protection Turnstile / CAPTCHA (Validation serveur)
@@ -257,8 +274,10 @@ export async function loginAction(formData: FormData) {
       email,
       reason: error.message,
     });
-    // Anti-énumération : message générique uniforme
-    return { error: "Identifiants invalides ou trop de tentatives. Veuillez réessayer plus tard." };
+    // Anti-énumération : aucun message distinguant « email inconnu » de
+    // « mot de passe incorrect » (impossible de tester l'existence d'un
+    // compte), mais chaque cause reste explicite et actionnable.
+    return { error: loginFailureErrorMessage(error) };
   }
 
   logSecurityEvent("AUTH_LOGIN_SUCCESS", {
@@ -345,7 +364,7 @@ export async function updatePasswordAction(formData: FormData) {
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) {
-    return { error: error.message };
+    return { error: updatePasswordErrorMessage(error) };
   }
 
   await supabase.auth.signOut();
@@ -359,40 +378,84 @@ export async function logoutAction() {
 }
 
 /**
- * Traite une demande d'inscription (ADMIN ou DELEGATE de la classe concernée).
- * La RLS garantit qu'un DELEGATE ne peut agir que sur sa propre classe.
+ * Traite une demande d'inscription OU de changement de classe
+ * (ADMIN, ou DELEGATE de la classe demandée).
+ *
+ * Sécurité (correction P-020 / P-021 — docs/audit-classepulse/05-securite.md) :
+ *   1. la session est vérifiée (aucun identifiant d'utilisateur accepté du
+ *      navigateur) ;
+ *   2. la lecture RLS de la demande sert de premier filtre (un ADMIN voit
+ *      tout, un DELEGATE uniquement les demandes de SA classe) puis
+ *      l'autorisation est vérifiée explicitement (canValidateRegistration) ;
+ *   3. la transition est réalisée par `classpulse_decide_request`
+ *      (SECURITY DEFINER, service_role) qui RÉVÉRIFIE, sous verrouillage, que
+ *      la demande est encore PENDING et que l'appelant est ADMIN ou délégué de
+ *      la classe demandée, puis accepte atomiquement : demande validée +
+ *      clôture de l'ancienne appartenance + ouverture de la nouvelle +
+ *      mise à jour du profil ;
+ *   4. AUCUN effet de bord service role (notification, email) n'est exécuté si
+ *      la transition a échoué — le résultat du RPC fait foi.
+ *
+ * `previous_class_id` distingue une inscription (JOIN) d'un changement
+ * de classe (CHANGE) : le compte étant déjà approuvé, un changement accepté
+ * ne renvoie pas l'email d'activation d'accès.
  */
 export async function decideRegistrationAction(
   requestId: string,
   decision: "ACCEPTED" | "REJECTED"
 ) {
+  if (typeof requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+    return { error: "Demande invalide" };
+  }
+  if (decision !== "ACCEPTED" && decision !== "REJECTED") {
+    return { error: "Décision invalide" };
+  }
+
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
-  // L'email n'est pas sélectionnable par le client (RLS colonne) : on le lira
-  // via le service role après vérification de la permission (voir plus bas).
-  const { data: request, error: fetchError } = await supabase
-    .from("registration_requests")
-    .select("*, profiles!registration_requests_user_id_fkey(first_name, last_name), classes(name)")
-    .eq("id", requestId)
-    .single();
+  // 2 requêtes indépendantes → parallélisées (profil de l'appelant + demande).
+  const [{ data: actor }, { data: request, error: fetchError }] = await Promise.all([
+    supabase.from("profiles").select("role, class_id").eq("id", user.id).single(),
+    supabase
+      .from("registration_requests")
+      .select(
+        "*, profiles!registration_requests_user_id_fkey(first_name, last_name), classes!registration_requests_class_id_fkey(name)"
+      )
+      .eq("id", requestId)
+      .single(),
+  ]);
 
+  if (!actor) return { error: "Profil introuvable" };
   if (fetchError || !request) return { error: "Demande introuvable" };
   if (request.status !== "PENDING") {
     return { error: "Cette demande a déjà été traitée (décision définitive)." };
   }
+  if (
+    !canValidateRegistration(
+      { id: user.id, role: actor.role, classId: actor.class_id },
+      request.class_id
+    )
+  ) {
+    return { error: "Vous n'êtes pas autorisé à traiter cette demande." };
+  }
 
-  const { error: updateError } = await supabase
-    .from("registration_requests")
-    .update({ status: decision, decided_by: user.id, decided_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("status", "PENDING"); // garde-fou anti double-décision (course condition)
+  const { data, error: rpcError } = await createAdminClient().rpc("classpulse_decide_request", {
+    p_request_id: requestId,
+    p_decider_id: user.id,
+    p_decision: decision,
+  });
+  if (rpcError) return { error: "La décision n'a pas pu être enregistrée : " + rpcError.message };
 
-  if (updateError) return { error: updateError.message };
+  const result = data as MembershipTransitionResult | null;
+  if (result?.status !== "ok") {
+    return { error: DECIDE_ERROR_MESSAGES[result?.code ?? ""] ?? "La décision n'a pas pu être enregistrée." };
+  }
 
+  const isChange = result.request_kind === "CHANGE";
   const studentFirstName = request.profiles?.first_name ?? "";
   const studentLastName = request.profiles?.last_name ?? "";
   const className = request.classes?.name ?? "";
@@ -400,31 +463,30 @@ export async function decideRegistrationAction(
   if (decision === "ACCEPTED") {
     const admin = createAdminClient();
 
-    // 2 queries indépendantes → parallélisées (email + update class_id)
-    const [{ data: studentRow }] = await Promise.all([
-      admin
-        .from("profiles")
-        .select("email")
-        .eq("id", request.user_id)
-        .maybeSingle(),
-      request.class_id
-        ? admin
-            .from("profiles")
-            .update({ class_id: request.class_id })
-            .eq("id", request.user_id)
-        : Promise.resolve({ data: null, error: null }),
-    ]);
+    // Email du demandeur : non sélectionnable par le client (RLS colonne).
+    const { data: studentRow } = await admin
+      .from("profiles")
+      .select("email")
+      .eq("id", request.user_id)
+      .maybeSingle();
     const studentEmail = studentRow?.email ?? null;
 
-    // Notification + email → parallélisées
+    // Notification + email → parallélisés.
     await Promise.all([
       createNotification({
         userId: request.user_id,
         type: "REGISTRATION_ACCEPTED",
-        title: "Inscription acceptée",
-        message: "Votre demande d'inscription a été validée. Bienvenue sur ClassPulse !",
+        title: isChange ? "Changement de classe accepté" : "Inscription acceptée",
+        message: isChange
+          ? `Votre demande de changement de classe a été acceptée. Vous êtes désormais membre de ${className}.`
+          : "Votre demande d'inscription a été validée. Bienvenue sur ClassPulse !",
+        entityType: "registration_request",
+        entityId: request.id,
+        link: "/dashboard/settings/class",
       }),
-      studentEmail
+      // Un changement concerne un compte DÉJÀ accepté : l'email d'activation
+      // d'accès reste réservé à une première inscription.
+      studentEmail && !isChange
         ? handleRegistrationDecisionEmail({
             decision,
             userId: request.user_id,
@@ -439,11 +501,17 @@ export async function decideRegistrationAction(
     await createNotification({
       userId: request.user_id,
       type: "REGISTRATION_REJECTED",
-      title: "Inscription refusée",
-      message: "Votre demande d'inscription a été refusée. Vous pouvez en soumettre une nouvelle.",
+      title: isChange ? "Changement de classe refusé" : "Inscription refusée",
+      message: isChange
+        ? `Votre demande de changement de classe vers ${className} a été refusée. Vous restez membre de votre classe actuelle.`
+        : "Votre demande d'inscription a été refusée. Vous pouvez en soumettre une nouvelle.",
+      entityType: "registration_request",
+      entityId: request.id,
+      link: "/dashboard/settings/class",
     });
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings/class");
   return { success: true };
 }

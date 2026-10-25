@@ -18,8 +18,10 @@ do $$ begin
   create type user_role as enum ('STUDENT', 'DELEGATE', 'ADMIN');
 exception when duplicate_object then null; end $$;
 
+-- CANCELLED : demande retirée par son auteur ou caduquée par un départ
+-- (migration 0019). L'historique est conservé, jamais supprimé.
 do $$ begin
-  create type registration_status as enum ('PENDING', 'ACCEPTED', 'REJECTED');
+  create type registration_status as enum ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -90,16 +92,21 @@ create index if not exists idx_profiles_last_seen on profiles(last_seen_at desc)
 -- Redondant avec profiles.class_id volontairement : profiles.class_id
 -- = classe active de l'utilisateur ; class_members garde un historique
 -- et permet des règles d'accès explicites plus robustes pour RLS.
+-- `left_at IS NULL` = appartenance active ; `left_at` renseigné = appartenance
+-- close (départ volontaire ou transfert) — migration 0019.
 create table if not exists class_members (
   id uuid primary key default gen_random_uuid(),
   class_id uuid not null references classes(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
   joined_at timestamptz not null default now(),
+  left_at timestamptz,
+  constraint class_members_left_after_join check (left_at is null or left_at >= joined_at),
   unique (class_id, user_id)
 );
 
 create index if not exists idx_class_members_class on class_members(class_id);
 create index if not exists idx_class_members_user on class_members(user_id);
+create index if not exists idx_class_members_active on class_members(class_id) where left_at is null;
 
 -- ---------------------------------------------------------
 -- 5. TABLE: subjects (matières)
@@ -124,14 +131,20 @@ create table if not exists registration_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   class_id uuid not null references classes(id) on delete cascade,
+  -- Classe de l'utilisateur au moment de la demande (migration 0019) :
+  --   NULL  = demande d'inscription (« rejoindre ») ;
+  --   uuid  = demande de changement en conservant la classe actuelle.
+  previous_class_id uuid references classes(id) on delete set null,
   status registration_status not null default 'PENDING',
   decided_by uuid references profiles(id),
   decided_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint registration_requests_change_distinct check (previous_class_id is distinct from class_id)
 );
 
 create index if not exists idx_regreq_class_id on registration_requests(class_id);
 create index if not exists idx_regreq_status on registration_requests(status);
+create index if not exists idx_regreq_user_status on registration_requests(user_id, status);
 -- Un utilisateur ne peut avoir qu'UNE demande PENDING à la fois
 create unique index if not exists uq_regreq_pending_per_user
   on registration_requests(user_id)
@@ -508,8 +521,13 @@ create policy profiles_update_admin_role on profiles for update
 
 -- ---- class_members ----
 drop policy if exists class_members_select on class_members;
+-- Chacun relit SES propres appartenances (historique des départs inclus) ;
+-- les membres lisent l'appartenance active de leur classe.
 create policy class_members_select on class_members for select
-  using (is_member_of(class_id));
+  using (
+    user_id = auth.uid()
+    or is_member_of(class_id)
+  );
 
 drop policy if exists class_members_admin_write on class_members;
 create policy class_members_admin_write on class_members for all
@@ -534,8 +552,17 @@ create policy regreq_select on registration_requests for select
   );
 
 drop policy if exists regreq_insert on registration_requests;
+-- P-020 (migration 0019) : un client n'insère QUE sa propre demande, au statut
+-- PENDING, non décidée, et SANS origine — les demandes de changement passent
+-- exclusivement par classpulse_request_class_change (service_role).
 create policy regreq_insert on registration_requests for insert
-  with check (user_id = auth.uid());
+  with check (
+    user_id = auth.uid()
+    and status = 'PENDING'
+    and decided_by is null
+    and decided_at is null
+    and previous_class_id is null
+  );
 
 drop policy if exists regreq_update on registration_requests;
 create policy regreq_update on registration_requests for update
@@ -1296,6 +1323,226 @@ drop index if exists uq_email_notif_sent_auth;
 create unique index if not exists uq_email_notif_sent_auth
   on assignment_email_notifications(user_id, notification_type)
   where assignment_id is null and entity_id is null and status = 'SENT';
+
+-- =========================================================
+-- 21. APPARTENANCE À UNE CLASSE (départ, changement, historique)
+--     Équivalent migration 0019_class_membership.sql
+-- =========================================================
+-- Voir l'en-tête de 0019 pour le modèle métier et les garanties de sécurité.
+-- Les 4 fonctions sont SECURITY DEFINER et exécutables UNIQUEMENT par
+-- service_role : elles ne sont appelées que par les Server Actions, qui
+-- vérifient la session de l'utilisateur.
+
+create or replace function classpulse_leave_class(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile profiles%rowtype;
+begin
+  if p_user_id is null then
+    return jsonb_build_object('status', 'error', 'code', 'INVALID_INPUT');
+  end if;
+
+  select * into v_profile from profiles where id = p_user_id for update;
+  if not found then
+    return jsonb_build_object('status', 'error', 'code', 'PROFILE_NOT_FOUND');
+  end if;
+  if v_profile.role = 'ADMIN' then
+    return jsonb_build_object('status', 'error', 'code', 'ADMIN_BLOCKED');
+  end if;
+  if v_profile.role = 'DELEGATE' then
+    return jsonb_build_object('status', 'error', 'code', 'DELEGATE_BLOCKED');
+  end if;
+  if v_profile.class_id is null then
+    return jsonb_build_object('status', 'error', 'code', 'NO_CLASS');
+  end if;
+
+  update class_members
+     set left_at = now()
+   where user_id = p_user_id
+     and class_id = v_profile.class_id
+     and left_at is null;
+
+  if not found then
+    insert into class_members (class_id, user_id, left_at)
+    values (v_profile.class_id, p_user_id, now())
+    on conflict (class_id, user_id)
+    do update set left_at = coalesce(class_members.left_at, excluded.left_at);
+  end if;
+
+  update registration_requests
+     set status = 'CANCELLED', decided_by = p_user_id, decided_at = now()
+   where user_id = p_user_id and status = 'PENDING';
+
+  update profiles set class_id = null where id = p_user_id;
+
+  return jsonb_build_object('status', 'ok');
+end;
+$$;
+
+create or replace function classpulse_request_class_change(
+  p_user_id uuid,
+  p_target_class_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile profiles%rowtype;
+begin
+  if p_user_id is null or p_target_class_id is null then
+    return jsonb_build_object('status', 'error', 'code', 'INVALID_INPUT');
+  end if;
+
+  select * into v_profile from profiles where id = p_user_id for update;
+  if not found then
+    return jsonb_build_object('status', 'error', 'code', 'PROFILE_NOT_FOUND');
+  end if;
+  if v_profile.role <> 'STUDENT' then
+    return jsonb_build_object('status', 'error', 'code', 'ROLE_BLOCKED');
+  end if;
+
+  if not exists (select 1 from classes where id = p_target_class_id) then
+    return jsonb_build_object('status', 'error', 'code', 'CLASS_NOT_FOUND');
+  end if;
+
+  if v_profile.class_id = p_target_class_id then
+    return jsonb_build_object('status', 'error', 'code', 'SAME_CLASS');
+  end if;
+
+  if exists (
+    select 1 from registration_requests where user_id = p_user_id and status = 'PENDING'
+  ) then
+    return jsonb_build_object('status', 'error', 'code', 'PENDING_EXISTS');
+  end if;
+
+  insert into registration_requests (user_id, class_id, previous_class_id, status)
+  values (p_user_id, p_target_class_id, v_profile.class_id, 'PENDING');
+
+  return jsonb_build_object(
+    'status', 'ok',
+    'request_kind', case when v_profile.class_id is null then 'JOIN' else 'CHANGE' end
+  );
+exception
+  when unique_violation then
+    return jsonb_build_object('status', 'error', 'code', 'PENDING_EXISTS');
+end;
+$$;
+
+create or replace function classpulse_cancel_request(
+  p_user_id uuid,
+  p_request_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_request registration_requests%rowtype;
+begin
+  if p_user_id is null or p_request_id is null then
+    return jsonb_build_object('status', 'error', 'code', 'INVALID_INPUT');
+  end if;
+
+  select * into v_request from registration_requests where id = p_request_id for update;
+  if not found or v_request.user_id <> p_user_id then
+    return jsonb_build_object('status', 'error', 'code', 'NOT_FOUND');
+  end if;
+  if v_request.status <> 'PENDING' then
+    return jsonb_build_object('status', 'error', 'code', 'NOT_PENDING');
+  end if;
+
+  update registration_requests
+     set status = 'CANCELLED', decided_by = p_user_id, decided_at = now()
+   where id = p_request_id;
+
+  return jsonb_build_object('status', 'ok');
+end;
+$$;
+
+create or replace function classpulse_decide_request(
+  p_request_id uuid,
+  p_decider_id uuid,
+  p_decision registration_status
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_request registration_requests%rowtype;
+  v_decider profiles%rowtype;
+begin
+  if p_request_id is null or p_decider_id is null then
+    return jsonb_build_object('status', 'error', 'code', 'INVALID_INPUT');
+  end if;
+  if p_decision not in ('ACCEPTED', 'REJECTED') then
+    return jsonb_build_object('status', 'error', 'code', 'INVALID_DECISION');
+  end if;
+
+  select * into v_request from registration_requests where id = p_request_id for update;
+  if not found then
+    return jsonb_build_object('status', 'error', 'code', 'NOT_FOUND');
+  end if;
+  if v_request.status <> 'PENDING' then
+    return jsonb_build_object('status', 'error', 'code', 'NOT_PENDING');
+  end if;
+
+  select * into v_decider from profiles where id = p_decider_id;
+  if not found or not (
+    v_decider.role = 'ADMIN'
+    or (v_decider.role = 'DELEGATE' and v_decider.class_id = v_request.class_id)
+  ) then
+    return jsonb_build_object('status', 'error', 'code', 'FORBIDDEN');
+  end if;
+
+  update registration_requests
+     set status = p_decision, decided_by = p_decider_id, decided_at = now()
+   where id = p_request_id;
+
+  if p_decision = 'ACCEPTED' then
+    update class_members
+       set left_at = now()
+     where user_id = v_request.user_id
+       and left_at is null
+       and class_id is distinct from v_request.class_id;
+
+    insert into class_members (class_id, user_id)
+    values (v_request.class_id, v_request.user_id)
+    on conflict (class_id, user_id)
+    do update
+      set left_at = null,
+          joined_at = case
+                        when class_members.left_at is not null then now()
+                        else class_members.joined_at
+                      end;
+
+    update profiles set class_id = v_request.class_id where id = v_request.user_id;
+  end if;
+
+  return jsonb_build_object(
+    'status', 'ok',
+    'request_kind', case when v_request.previous_class_id is null then 'JOIN' else 'CHANGE' end
+  );
+end;
+$$;
+
+revoke execute on function classpulse_leave_class(uuid) from public, anon, authenticated;
+revoke execute on function classpulse_request_class_change(uuid, uuid) from public, anon, authenticated;
+revoke execute on function classpulse_cancel_request(uuid, uuid) from public, anon, authenticated;
+revoke execute on function classpulse_decide_request(uuid, uuid, public.registration_status) from public, anon, authenticated;
+
+grant execute on function classpulse_leave_class(uuid) to service_role;
+grant execute on function classpulse_request_class_change(uuid, uuid) to service_role;
+grant execute on function classpulse_cancel_request(uuid, uuid) to service_role;
+grant execute on function classpulse_decide_request(uuid, uuid, public.registration_status) to service_role;
 
 -- =========================================================
 -- FIN DU SCHEMA

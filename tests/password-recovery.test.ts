@@ -175,7 +175,7 @@ describe("updatePasswordAction — étape 3 (nouveau mot de passe)", () => {
     state.user = { id: "u-1" };
     state.updateError = { message: "New password should be different from the old password" };
     const result = await updatePasswordAction(RESET_PASSWORD());
-    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("different") }));
+    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("identique") }));
     expect(state.signOutCalled).toBe(false);
     expect(state.redirectTarget).toBeNull();
   });
@@ -195,10 +195,11 @@ describe("updatePasswordAction — étape 3 (nouveau mot de passe)", () => {
     expect(state.signOutCalled).toBe(false);
   });
 
-  it("mot de passe trop court : erreur de validation", async () => {
+  it("mot de passe trop court : erreur de validation explicite (règle + longueur saisie)", async () => {
     state.user = { id: "u-1" };
     const result = await updatePasswordAction(RESET_PASSWORD({ password: "court", confirmPassword: "court" }));
-    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("12 caractères") }));
+    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("6 caractères minimum") }));
+    expect(result).toEqual(expect.objectContaining({ error: expect.stringContaining("saisi 5") }));
     expect(state.updateCalled).toBeNull();
   });
 });

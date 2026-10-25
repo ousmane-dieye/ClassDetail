@@ -67,16 +67,16 @@ describe("Menu « Plus » — permissions par rôle", () => {
       "/dashboard/hints",
       "/dashboard/recordings",
       "/dashboard/notifications",
-      "/dashboard/settings/notifications",
+      "/dashboard/settings",
     ]);
     expect(items.some((i) => i.href === "/dashboard/stats")).toBe(false);
     expect(items.some((i) => i.href === "/dashboard/admin")).toBe(false);
   });
 
-  it("les paramètres de notifications sont accessibles à TOUS les rôles (préférences personnelles)", () => {
+  it("les paramètres sont accessibles à TOUS les rôles (profil et préférences personnelles)", () => {
     for (const role of ["STUDENT", "DELEGATE", "ADMIN"] as const) {
       expect(getMobileMoreItems(role).map((i) => i.href)).toContain(
-        "/dashboard/settings/notifications"
+        "/dashboard/settings"
       );
     }
   });

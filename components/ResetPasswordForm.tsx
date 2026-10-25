@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { updatePasswordAction } from "@/actions/auth";
 import { SITE } from "@/lib/constants/images";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants/password";
 import { GraduationCap, ArrowRight, Lock, AlertCircle, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -65,9 +66,9 @@ export function ResetPasswordForm() {
               id="password"
               name="password"
               type={showPassword ? "text" : "password"}
-              placeholder="8 caractères minimum"
+              placeholder={`${PASSWORD_MIN_LENGTH} caractères minimum`}
               required
-              minLength={8}
+              minLength={PASSWORD_MIN_LENGTH}
               autoComplete="new-password"
               className="h-11 pl-10 pr-10"
             />
@@ -80,6 +81,9 @@ export function ResetPasswordForm() {
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {PASSWORD_MIN_LENGTH} caractères minimum, et différent de votre ancien mot de passe.
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -94,7 +98,7 @@ export function ResetPasswordForm() {
               type={showPassword ? "text" : "password"}
               placeholder="Retapez votre mot de passe"
               required
-              minLength={8}
+              minLength={PASSWORD_MIN_LENGTH}
               autoComplete="new-password"
               className="h-11 pl-10"
             />

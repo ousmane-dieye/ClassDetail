@@ -2,7 +2,7 @@
 // Génération réelle recommandée en prod : `supabase gen types typescript`
 
 export type UserRole = "STUDENT" | "DELEGATE" | "ADMIN";
-export type RegistrationStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+export type RegistrationStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
 export type TaskType = "EXERCISE" | "TP" | "ASSIGNMENT" | "RESEARCH" | "PROJECT" | "OTHER";
 export type HintType = "DEVOIR" | "EXAMEN" | "CONTROLE" | "TP" | "PROJET" | "AUTRE";
 export type ReminderKind = "J3" | "J1";
@@ -210,10 +210,21 @@ export type RegistrationRequestRow = {
   id: string;
   user_id: string;
   class_id: string;
+  /** Classe de l'utilisateur au moment de la demande (NULL = « rejoindre »). */
+  previous_class_id: string | null;
   status: RegistrationStatus;
   decided_by: string | null;
   decided_at: string | null;
   created_at: string;
+};
+
+export type ClassMemberRow = {
+  id: string;
+  class_id: string;
+  user_id: string;
+  joined_at: string;
+  /** NULL = appartenance active ; renseigné = départ ou transfert (0019). */
+  left_at: string | null;
 };
 
 export type TaskRow = {
@@ -329,6 +340,18 @@ export type AiRateLimitResult = {
   retry_after_seconds: number;
 };
 
+/**
+ * Résultat des fonctions de transition d'appartenance (migration 0019).
+ * `code` est un identifiant technique stable : les messages français
+ * destinés à l'utilisateur vivent dans les Server Actions.
+ */
+export type MembershipTransitionResult = {
+  status: "ok" | "error";
+  code?: string;
+  /** "JOIN" = demande de rejoindre, "CHANGE" = demande de changement. */
+  request_kind?: "JOIN" | "CHANGE";
+};
+
 export type EmailNotificationRow = {
   id: string;
   assignment_id: string | null;
@@ -383,7 +406,19 @@ export interface Database {
             referencedRelation: "classes",
             referencedColumns: ["id"],
           },
+          {
+            foreignKeyName: "registration_requests_previous_class_id_fkey",
+            columns: ["previous_class_id"],
+            referencedRelation: "classes",
+            referencedColumns: ["id"],
+          },
         ];
+      };
+      class_members: {
+        Row: ClassMemberRow;
+        Insert: Partial<ClassMemberRow>;
+        Update: Partial<ClassMemberRow>;
+        Relationships: [];
       };
       tasks: {
         Row: TaskRow;
@@ -556,6 +591,26 @@ export interface Database {
           p_window_seconds: number;
         };
         Returns: AiRateLimitResult;
+      };
+      /** Quitter sa classe (migration 0019) — réservé au service role. */
+      classpulse_leave_class: {
+        Args: { p_user_id: string };
+        Returns: MembershipTransitionResult;
+      };
+      /** Demande de rejoindre / changer de classe — réservé au service role. */
+      classpulse_request_class_change: {
+        Args: { p_user_id: string; p_target_class_id: string };
+        Returns: MembershipTransitionResult;
+      };
+      /** Annulation d'une demande par son auteur — réservé au service role. */
+      classpulse_cancel_request: {
+        Args: { p_user_id: string; p_request_id: string };
+        Returns: MembershipTransitionResult;
+      };
+      /** Décision (acceptation / refus) atomique — réservé au service role. */
+      classpulse_decide_request: {
+        Args: { p_request_id: string; p_decider_id: string; p_decision: RegistrationStatus };
+        Returns: MembershipTransitionResult;
       };
     };
   };

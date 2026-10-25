@@ -14,6 +14,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, NotificationRow } from "@/types/database.types";
+import { isoDateRegex } from "@/lib/validation/schemas";
+import { getZonedNow, formatYmdLong, dayLongLabel, isoDayOfWeek, minutesToTime, addDaysYmd, nextWeekdayYmd } from "@/lib/schedule/dates";
+import { expandDay } from "@/lib/schedule/occurrences";
+import { toEvaluationView, EVALUATION_TYPE_LABELS, type EvaluationView } from "@/lib/evaluations/constants";
 
 export interface AssistantContextUser {
   id: string;
@@ -80,6 +84,34 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: { type: "object", properties: {} },
   },
   {
+    name: "getMySchedule",
+    description:
+      "Emploi du temps de la classe pour un jour donné (cours prévus, heures, salle, professeur, annulations). À utiliser pour « ai-je cours lundi », « qu'est-ce que j'ai à 8h », « mon planning de demain ». TRANSCRIS LE JOUR DEMANDÉ DANS LE PARAMÈTRE weekday (« lundi », « mardi »… ou numéro 1-7 ISO) : le serveur calcule la date exacte (prochaine occurrence) — ne calcule JAMAIS de date toi-même. Sinon, paramètre date explicite au format AAAA-MM-JJ. Seules les séances PUBLIÉES sont listées ; les brouillons ne sont jamais exposés.",
+    parameters: {
+      type: "object",
+      properties: {
+        weekday: {
+          type: "string",
+          description:
+            "Jour de semaine demandé : « lundi »…« dimanche » (FR ou EN) ou numéro ISO 1-7 (1 = lundi). Recommandé pour toute question du type « lundi à 8h ».",
+        },
+        date: {
+          type: "string",
+          description: "Date explicite au format AAAA-MM-JJ (utiliser seulement si l'utilisateur donne une date précise)",
+        },
+      },
+    },
+  },
+  {
+    name: "getMyEvaluations",
+    description:
+      "Liste des évaluations publiées à venir (contrôle continu, devoir surveillé, examen, TP…) avec date, heures, salle et chapitres concernés quand ils sont renseignés. À utiliser pour « quelles évaluations à venir », « quand est mon examen », « y a-t-il un contrôle la semaine prochaine ». Les chapitres sont facultatifs : ils peuvent être absents. Paramètre days : fenêtre en jours (défaut 30, max 90).",
+    parameters: {
+      type: "object",
+      properties: { days: { type: "number", description: "Fenêtre en jours (défaut 30, max 90)" } },
+    },
+  },
+  {
     name: "getMyNotifications",
     description:
       "Dernières notifications de l'utilisateur (devoirs, documents, rappels, annonces…). À utiliser pour « ai-je de nouvelles notifications », « qu'est-ce qui s'est passé récemment ».",
@@ -104,7 +136,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "suggestActions",
     description:
-      "Outil de NAVIGATION : propose 1 à 3 boutons d'action (label + href interne) pour orienter l'utilisateur vers une page de la plateforme. Utiliser UNIQUEMENT les href de la liste blanche : /dashboard, /dashboard/tasks, /dashboard/documents, /dashboard/hints, /dashboard/recordings, /dashboard/chat, /dashboard/notifications, /dashboard/stats, /dashboard/admin. Ne jamais inventer d'URL.",
+      "Outil de NAVIGATION : propose 1 à 3 boutons d'action (label + href interne) pour orienter l'utilisateur vers une page de la plateforme. Utiliser UNIQUEMENT les href de la liste blanche : /dashboard, /dashboard/tasks, /dashboard/documents, /dashboard/hints, /dashboard/recordings, /dashboard/schedule, /dashboard/evaluations, /dashboard/chat, /dashboard/notifications, /dashboard/stats, /dashboard/admin. Ne jamais inventer d'URL.",
     parameters: {
       type: "object",
       properties: {
@@ -133,6 +165,8 @@ const INTERNAL_HREFS = [
   "/dashboard/documents",
   "/dashboard/hints",
   "/dashboard/recordings",
+  "/dashboard/schedule",
+  "/dashboard/evaluations",
   "/dashboard/chat",
   "/dashboard/notifications",
   "/dashboard/stats",
@@ -201,6 +235,27 @@ function daysUntil(iso: string, now: number = Date.now()): number {
 export interface ToolContext {
   user: AssistantContextUser;
   supabase: ServerClient;
+}
+
+const WEEKDAY_NAMES: Record<string, number> = {
+  // Français
+  lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6, dimanche: 7,
+  // Anglais
+  monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 7,
+};
+
+/**
+ * Convertit un jour nommé (FR/EN, sans accents, minuscules) ou un numéro ISO
+ * (1 = lundi … 7 = dimanche) en jour ISO. Retourne null si non reconnu.
+ */
+export function parseWeekday(value: string): number | null {
+  const normalized = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  if (/^[1-7]$/.test(normalized)) return Number(normalized);
+  return WEEKDAY_NAMES[normalized] ?? null;
 }
 
 export async function executeTool(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -299,6 +354,160 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         `- ${h.title} (${toFr(h.type)}${h.year ? `, ${h.year}` : ""}) — ${subjectName.get(h.subject_id) ?? "Sans matière"} — lien : ${h.drive_url}`
       );
       return { ok: true, content: `Hints disponibles (${data.length}) :\n${lines.join("\n")}` };
+    }
+
+    case "getMySchedule": {
+      // Fuseau de l'application : jamais de calcul côté client.
+      const todayYmd = getZonedNow().todayYmd;
+      const todayLabel = `${dayLongLabel(isoDayOfWeek(todayYmd))} ${formatYmdLong(todayYmd)}`;
+
+      // Résolution du jour DÉLÉGUÉE AU SERVEUR : le modèle transcrit le jour
+      // demandé (« lundi ») dans `weekday`, et c'est la pendule de l'app qui
+      // calcule la date exacte. On ne fait JAMAIS confiance à une date calculée
+      // par le modèle (très fautif en arithmétique de dates).
+      const rawWeekday = typeof args.weekday === "string" ? args.weekday.trim() : "";
+      const rawDate = typeof args.date === "string" ? args.date.trim() : "";
+      let date: string;
+      if (rawWeekday) {
+        const dow = parseWeekday(rawWeekday);
+        if (dow === null) {
+          return { ok: false, content: `Jour « ${rawWeekday} » non reconnu. Utilisez un jour (lundi…dimanche) ou une date AAAA-MM-JJ.` };
+        }
+        date = nextWeekdayYmd(todayYmd, dow);
+      } else if (rawDate) {
+        if (!isoDateRegex.test(rawDate)) {
+          return { ok: false, content: "Date invalide. Utilisez le format AAAA-MM-JJ (ex. 2026-06-15)." };
+        }
+        date = rawDate;
+      } else {
+        date = todayYmd;
+      }
+
+      // RLS appliquée : la requête ne retourne que ce que l'utilisateur a le
+      // droit de voir. Les BROUILONS sont exclus ici même pour un délégué :
+      // l'assistant ne doit jamais révéler un cours non publié à la classe.
+      const [sessionsRes, exceptionsRes, subjectsRes] = await Promise.all([
+        supabase
+          .from("schedule_sessions")
+          .select("id, class_id, subject_id, day_of_week, start_time, end_time, room, teacher, valid_from, valid_until, status")
+          .eq("class_id", classId ?? "")
+          .eq("status", "PUBLISHED"),
+        supabase
+          .from("schedule_session_exceptions")
+          .select("id, session_id, class_id, date, is_cancelled, new_start_time, new_end_time, new_room, new_subject_id, note")
+          .eq("class_id", classId ?? "")
+          .eq("date", date),
+        supabase.from("subjects").select("id, name").eq("class_id", classId ?? ""),
+      ]);
+
+      if (sessionsRes.error) return { ok: false, content: "Erreur lors de la lecture de l'emploi du temps." };
+
+      const subjects = new Map((subjectsRes.data ?? []).map((s) => [s.id, s.name]));
+      const dayLabel = `${dayLongLabel(isoDayOfWeek(date))} ${formatYmdLong(date)}`;
+      const anchor = `Aujourd'hui est ${todayLabel}. `;
+
+      if (!sessionsRes.data || sessionsRes.data.length === 0) {
+        return { ok: true, content: `${anchor}Aucune séance publiée dans l'emploi du temps de votre classe (donc rien le ${dayLabel}).` };
+      }
+
+      // Même modèle que l'UI : expansion récurrente + exceptions datées,
+      // brouillons exclus (includeDrafts: false).
+      const occurrences = expandDay(
+        sessionsRes.data.map((s) => ({
+          id: s.id,
+          classId: s.class_id,
+          subjectId: s.subject_id,
+          dayOfWeek: s.day_of_week,
+          startTime: s.start_time,
+          endTime: s.end_time,
+          room: s.room,
+          teacher: s.teacher,
+          validFrom: s.valid_from,
+          validUntil: s.valid_until,
+          status: s.status as "DRAFT" | "PUBLISHED",
+        })),
+        (exceptionsRes.data ?? []).map((e) => ({
+          id: e.id,
+          sessionId: e.session_id,
+          date: e.date,
+          isCancelled: e.is_cancelled,
+          newStartTime: e.new_start_time,
+          newEndTime: e.new_end_time,
+          newRoom: e.new_room,
+          newSubjectId: e.new_subject_id,
+          note: e.note,
+        })),
+        date,
+        { includeDrafts: false }
+      );
+
+      if (occurrences.length === 0) {
+        return { ok: true, content: `${anchor}Pas de cours prévu le ${dayLabel} dans l'emploi du temps publié.` };
+      }
+
+      const lines = occurrences.map((o) => {
+        const time = `${minutesToTime(o.startMinutes)}–${minutesToTime(o.endMinutes)}`;
+        const subject = subjects.get(o.subjectId) ?? "Sans matière";
+        const parts = [`- ${time} — ${subject}`];
+        if (o.room) parts.push(`salle ${o.room}`);
+        if (o.teacher) parts.push(`${o.teacher}`);
+        if (o.cancelled) parts.push(`⚠️ ANNULÉ${o.note ? ` (${o.note})` : ""}`);
+        else if (o.kind !== "normal") parts.push("(créneau modifié)");
+        return parts.join(" — ");
+      });
+
+      return { ok: true, content: `${anchor}Emploi du temps du ${dayLabel} (${occurrences.length} cours) :\n${lines.join("\n")}` };
+    }
+
+    case "getMyEvaluations": {
+      const days = Math.min(Math.max(Number(args.days ?? 30) || 30, 1), 90);
+      const todayYmd = getZonedNow().todayYmd;
+      const lastYmd = addDaysYmd(todayYmd, days);
+
+      // RLS + règle de visibilité identique à l'UI (isVisibleToStudents) :
+      // les BROUILONS sont exclus en code, même pour un délégué dont la RLS
+      // les autorise — l'assistant ne doit jamais révéler un brouillon. Les
+      // évaluations ANNULÉES restent listées (la classe doit le savoir).
+      const [evaluationsRes, subjectsRes] = await Promise.all([
+        supabase
+          .from("evaluations")
+          .select("id, subject_id, title, type, date, start_time, end_time, room, status, rescheduled_from")
+          .eq("class_id", classId ?? "")
+          .neq("status", "DRAFT")
+          .gte("date", todayYmd)
+          .lte("date", lastYmd)
+          .order("date", { ascending: true })
+          .order("start_time", { ascending: true, nullsFirst: false })
+          .limit(30),
+        supabase.from("subjects").select("id, name").eq("class_id", classId ?? ""),
+      ]);
+
+      if (evaluationsRes.error) return { ok: false, content: "Erreur lors de la lecture des évaluations." };
+
+      const subjects = new Map((subjectsRes.data ?? []).map((s) => [s.id, s.name]));
+      const views: EvaluationView[] = (evaluationsRes.data ?? []).map((row) => toEvaluationView(row));
+
+      if (views.length === 0) {
+        return { ok: true, content: `Aucune évaluation publiée dans les ${days} prochains jours.` };
+      }
+
+      const lines = views.map((e) => {
+        const parts = [`- ${formatYmdLong(e.date)} — ${EVALUATION_TYPE_LABELS[e.type]} de ${subjects.get(e.subjectId) ?? "Sans matière"}`];
+        parts.push(`« ${e.title} »`);
+        if (e.startTime && e.endTime) parts.push(`${e.startTime}–${e.endTime}`);
+        else if (e.startTime) parts.push(`à partir de ${e.startTime}`);
+        else parts.push("heure à confirmer");
+        if (e.room) parts.push(`salle ${e.room}`);
+        if (e.status === "CANCELLED") parts.push("⚠️ ANNULÉE");
+        if (e.rescheduledFrom) parts.push(`reportée (anciennement ${formatYmdLong(e.rescheduledFrom)})`);
+        return parts.join(" — ");
+      });
+
+      const cancelled = views.filter((e) => e.status === "CANCELLED").length;
+      return {
+        ok: true,
+        content: `Évaluations publiées dans les ${days} prochains jours (${views.length}${cancelled ? `, dont ${cancelled} annulée(s)` : ""}) :\n${lines.join("\n")}`,
+      };
     }
 
     case "getMyNotifications": {

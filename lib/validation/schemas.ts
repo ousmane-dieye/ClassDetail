@@ -1,24 +1,49 @@
 import { z } from "zod";
 import { SUBJECT_COLOR_KEYS } from "@/lib/constants/subjectColors";
 import { NOTIFICATION_PREFERENCE_CATEGORIES } from "@/lib/constants/notificationPreferences";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants/password";
+
+export { PASSWORD_MIN_LENGTH };
+
+/**
+ * Champ « mot de passe » partagé (inscription + réinitialisation).
+ *
+ * Le message énonce la règle ET la valeur réellement saisie : l'utilisateur
+ * sait immédiatement ce qui manque, au lieu d'un « 12 caractères minimum »
+ * sans rapport avec ce qu'il a tapé.
+ */
+export const passwordField = z.string().superRefine((value, ctx) => {
+  if (value.length < PASSWORD_MIN_LENGTH) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      type: "string",
+      minimum: PASSWORD_MIN_LENGTH,
+      inclusive: true,
+      message: `Mot de passe trop court : ${PASSWORD_MIN_LENGTH} caractères minimum (vous en avez saisi ${value.length}).`,
+    });
+  }
+});
+
+const PASSWORDS_DO_NOT_MATCH =
+  "Les deux mots de passe ne correspondent pas : saisissez exactement le même mot de passe dans les deux champs.";
 
 export const registerSchema = z
   .object({
     firstName: z.string().trim().min(2, "Prénom trop court").max(80),
     lastName: z.string().trim().min(2, "Nom trop court").max(80),
-    email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
-    password: z.string().min(12, "12 caractères minimum"),
+    email: z.string().trim().email("Adresse email invalide (ex. : etudiant@ecole.fr)").transform((v) => v.toLowerCase()),
+    password: passwordField,
     confirmPassword: z.string(),
     classId: z.string().uuid("Veuillez sélectionner une classe"),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Les mots de passe ne correspondent pas",
+    message: PASSWORDS_DO_NOT_MATCH,
     path: ["confirmPassword"],
   });
 
 export const loginSchema = z.object({
-  email: z.string().trim().email("Email invalide").transform((v) => v.toLowerCase()),
-  password: z.string().min(1, "Mot de passe requis"),
+  email: z.string().trim().email("Adresse email invalide (ex. : etudiant@ecole.fr)").transform((v) => v.toLowerCase()),
+  password: z.string().min(1, "Mot de passe manquant : saisissez votre mot de passe."),
 });
 
 export const resubmitSchema = z.object({
@@ -34,11 +59,11 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z
   .object({
-    password: z.string().min(12, "12 caractères minimum"),
+    password: passwordField,
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Les mots de passe ne correspondent pas",
+    message: PASSWORDS_DO_NOT_MATCH,
     path: ["confirmPassword"],
   });
 
@@ -49,6 +74,39 @@ export const classSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{4}$/, "Format attendu: 2026-2027"),
 });
+
+/**
+ * Paramètres → Ma classe : demande de rejoindre (sans classe) ou de changer
+ * (avec classe actuelle conservée jusqu'à l'acceptation).
+ */
+export const classTransferSchema = z.object({
+  classId: z.string().uuid("Veuillez sélectionner une classe"),
+});
+
+/**
+ * Paramètres → Mon profil : mise à jour des informations personnelles.
+ * Seuls prénom et nom sont modifiables (email = Supabase Auth, rôle = ADMIN).
+ */
+export const updateProfileSchema = z.object({
+  firstName: z.string().trim().min(2, "Prénom trop court (2 caractères minimum)").max(80, "Prénom trop long"),
+  lastName: z.string().trim().min(2, "Nom trop court (2 caractères minimum)").max(80, "Nom trop long"),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+/**
+ * Paramètres → Mon compte : changement de mot de passe depuis le dashboard
+ * (session active). Utilise le même champ de mot de passe que l'inscription.
+ */
+export const changePasswordSchema = z
+  .object({
+    password: passwordField,
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: PASSWORDS_DO_NOT_MATCH,
+    path: ["confirmPassword"],
+  });
 
 export const subjectSchema = z.object({
   classId: z.string().uuid(),

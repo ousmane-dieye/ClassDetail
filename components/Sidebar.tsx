@@ -50,7 +50,7 @@ const NAV_COMMUNITY = [
 const NAV_STATS = { href: "/dashboard/stats", label: "Statistiques", icon: BarChart3 };
 
 const NAV_ACCOUNT = [
-  { href: "/dashboard/settings/notifications", label: "Paramètres", icon: Settings },
+  { href: "/dashboard/settings", label: "Paramètres", icon: Settings },
 ];
 
 /* ──────────────────────────────────────────────────────────────────

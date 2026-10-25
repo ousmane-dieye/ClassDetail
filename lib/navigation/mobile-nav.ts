@@ -48,7 +48,7 @@ export function getMobileMoreItems(role: UserRole): MobileMoreItem[] {
     { href: "/dashboard/hints", label: "Hints & Sujets" },
     { href: "/dashboard/recordings", label: "Cours enregistrés" },
     { href: "/dashboard/notifications", label: "Notifications" },
-    { href: "/dashboard/settings/notifications", label: "Paramètres" },
+    { href: "/dashboard/settings", label: "Paramètres" },
   ];
 
   if (role !== "STUDENT") {

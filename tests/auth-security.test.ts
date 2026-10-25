@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { checkAuthLoginRateLimits, checkPasswordResetRateLimits } from "@/lib/security/rateLimit";
+import { loginFailureErrorMessage, rateLimitErrorMessage } from "@/lib/security/authMessages";
 import { verifyTurnstileToken } from "@/lib/security/turnstile";
 import { anonymizeEmail, anonymizeIp } from "@/lib/security/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -159,18 +160,39 @@ describe("ClassPulse Security — Suite complète d'audit anti-brute-force", () 
   });
 
   // -------------------------------------------------------------------------
-  // Test 6 — Strict Anti-Énumération (réponses unifiées)
+  // Test 6 — Anti-Énumération + messages explicites
   // -------------------------------------------------------------------------
-  it("Test 6 — Anti-Énumération : le message public est strictement identique dans tous les cas de figure", () => {
-    const GENERIC_ERROR = "Identifiants invalides ou trop de tentatives. Veuillez réessayer plus tard.";
+  it("Test 6 — Anti-Énumération : email inconnu et mot de passe faux sont indiscernables, mais chaque autre cause a SON message", () => {
+    // 1. Anti-énumération : « email inconnu » et « mot de passe incorrect »
+    //    restent STRICTEMENT identiques (pas de test d'existence de compte).
+    const emailInexistant = loginFailureErrorMessage({
+      code: "invalid_credentials",
+      message: "Invalid login credentials",
+    });
+    const mauvaisPassword = loginFailureErrorMessage({
+      code: "invalid_credentials",
+      message: "Invalid login credentials",
+    });
+    expect(emailInexistant).toBe(mauvaisPassword);
 
-    // Simulation de réponses
-    const emailInexistantError = GENERIC_ERROR;
-    const mauvaisPasswordError = GENERIC_ERROR;
-    const rateLimitedError = GENERIC_ERROR;
+    // 2. …mais ce message unique est actionnable : il cite les DEUX causes
+    //    possibles et la marche à suivre (règle des 6 caractères + réinitialisation).
+    expect(emailInexistant).toContain("cette adresse email");
+    expect(emailInexistant).toContain("mot de passe");
+    expect(emailInexistant).toContain("6 caractères");
+    expect(emailInexistant).toContain("Mot de passe oublié");
 
-    expect(emailInexistantError).toBe(mauvaisPasswordError);
-    expect(mauvaisPasswordError).toBe(rateLimitedError);
+    // 3. Quota dépassé : message DISTINCT, avec la règle et le délai d'attente.
+    const rateLimited = rateLimitErrorMessage({ bucket: "account", retryAfterMs: 9 * 60_000 });
+    expect(rateLimited).not.toBe(emailInexistant);
+    expect(rateLimited).toContain("Trop de tentatives");
+    expect(rateLimited).toContain("9 minutes");
+
+    // 4. Panne du garde-fou : message distinct, qui ne blâme PAS l'utilisateur.
+    const indisponible = rateLimitErrorMessage({ unavailable: true, retryAfterMs: 60_000 });
+    expect(indisponible).not.toBe(emailInexistant);
+    expect(indisponible).toContain("indisponible");
+    expect(indisponible).toContain("vos identifiants");
   });
 
   // -------------------------------------------------------------------------

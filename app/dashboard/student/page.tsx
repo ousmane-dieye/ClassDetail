@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { TaskCard } from "@/components/TaskCard";
+import { TodayScheduleCard } from "@/components/schedule/TodayScheduleCard";
+import { UpcomingEvaluationsCard } from "@/components/evaluations/UpcomingEvaluationsCard";
+import { getUpcomingEvaluationsForClass } from "@/lib/evaluations/queries";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card, CardContent } from "@/components/ui/Card";
 import { CS_IMAGES } from "@/lib/constants/images";
@@ -30,8 +33,9 @@ export default async function StudentDashboard() {
 
   const classId = profile?.class_id ?? "";
 
-  // 3 requêtes indépendantes après profile → parallélisées
-  const [{ data: tasks }, { data: completions }, { data: recentDocs }] = await Promise.all([
+  // 4 requêtes indépendantes après profile → parallélisées
+  const [{ data: tasks }, { data: completions }, { data: recentDocs }, upcomingEvaluations] =
+    await Promise.all([
     supabase
       .from("tasks")
       .select("id, title, type, due_date, class_id, subject_id, is_expired, description, attachment_link")
@@ -49,6 +53,8 @@ export default async function StudentDashboard() {
       .eq("class_id", classId)
       .order("created_at", { ascending: false })
       .limit(5),
+    // Évaluations publiées à venir (module évaluations — incident isolé).
+    getUpcomingEvaluationsForClass(classId, 3),
   ]);
 
   const completedIds = new Set((completions ?? []).map((c) => c.task_id));
@@ -224,6 +230,14 @@ export default async function StudentDashboard() {
 
         {/* Dernières ressources + découverte */}
         <section className="space-y-6 lg:col-span-5">
+          {/* Emploi du temps — prochain cours / états vides */}
+          <TodayScheduleCard classId={profile?.class_id ?? null} />
+
+          {/* Évaluations publiées à venir */}
+          {upcomingEvaluations.length > 0 && classId && (
+            <UpcomingEvaluationsCard items={upcomingEvaluations} classId={classId} />
+          )}
+
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">

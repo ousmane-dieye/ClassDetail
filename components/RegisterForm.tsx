@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { registerAction } from "@/actions/auth";
 import { SITE } from "@/lib/constants/images";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants/password";
 import { GraduationCap, ArrowRight, Lock, Mail, User, BookOpen, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -92,10 +93,21 @@ export function RegisterForm({ classes }: { classes: ClassOption[] }) {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">Mot de passe</label>
+            <label htmlFor="password" className="text-xs font-semibold text-foreground">
+              Mot de passe
+            </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-              <Input name="password" type={showPassword ? "text" : "password"} placeholder="••••••••" required autoComplete="new-password" className="h-11 pl-9 pr-9" />
+              <Input
+                name="password"
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                required
+                minLength={PASSWORD_MIN_LENGTH}
+                autoComplete="new-password"
+                className="h-11 pl-9 pr-9"
+              />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
@@ -105,14 +117,29 @@ export function RegisterForm({ classes }: { classes: ClassOption[] }) {
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              {PASSWORD_MIN_LENGTH} caractères minimum. Exemple : <span className="font-semibold">da2024sn</span>
+            </p>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">Confirmation</label>
+            <label htmlFor="confirmPassword" className="text-xs font-semibold text-foreground">
+              Confirmation
+            </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-              <Input name="confirmPassword" type={showPassword ? "text" : "password"} placeholder="••••••••" required autoComplete="new-password" className="h-11 pl-9" />
+              <Input
+                name="confirmPassword"
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                required
+                minLength={PASSWORD_MIN_LENGTH}
+                autoComplete="new-password"
+                className="h-11 pl-9"
+              />
             </div>
+            <p className="text-xs text-muted-foreground">Retapez le même mot de passe.</p>
           </div>
         </div>
 

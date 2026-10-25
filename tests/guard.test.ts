@@ -9,6 +9,10 @@ describe("checkTopicGuard (périmètre de l'assistant)", () => {
       "Quels documents sont disponibles dans ma classe ?",
       "Combien de notifications non lues ai-je ?",
       "Qui est mon délégué de classe ?",
+      "On a quoi lundi à 8h ?",
+      "Quel est mon emploi du temps demain ?",
+      "Quand est mon prochain examen ?",
+      "Y a-t-il un contrôle la semaine prochaine ?",
     ]) {
       expect(checkTopicGuard(q), q).toBeNull();
     }

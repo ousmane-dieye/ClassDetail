@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { dashboardGate } from "@/lib/business/membership";
 import { Sidebar } from "@/components/Sidebar";
 import { SidebarProvider } from "@/components/SidebarContext";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -20,7 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [profileResult, latestRequestResult, unreadResult] = await Promise.all([
     supabase
       .from("profiles")
-      .select("first_name, last_name, role")
+      .select("first_name, last_name, role, class_id")
       .eq("id", user.id)
       .single(),
     supabase
@@ -43,8 +44,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!profile) redirect("/login");
 
-  if (latestRequest?.status === "PENDING") redirect("/pending");
-  if (latestRequest?.status === "REJECTED") redirect("/register");
+  // Un utilisateur qui possède une classe garde TOUJOURS accès au dashboard :
+  // une demande de changement en attente ou refusée n'est pas un motif
+  // d'exclusion (l'état s'affiche dans Paramètres → Ma classe).
+  const gate = dashboardGate({
+    classId: profile.class_id ?? null,
+    latestRequestStatus: latestRequest?.status ?? null,
+  });
+  if (gate === "pending") redirect("/pending");
+  if (gate === "register") redirect("/register");
 
   const initials = `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}`.toUpperCase() || "U";
   const roleLabel =

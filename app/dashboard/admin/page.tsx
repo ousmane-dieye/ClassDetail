@@ -67,7 +67,9 @@ export default async function AdminDashboard() {
     admin
       .from("registration_requests")
       .select(
-        "id, created_at, profiles!registration_requests_user_id_fkey(first_name, last_name, email), classes(name)"
+        "id, created_at, previous_class_id, profiles!registration_requests_user_id_fkey(first_name, last_name, email), " +
+          "classes!registration_requests_class_id_fkey(name), " +
+          "previous_class:classes!registration_requests_previous_class_id_fkey(name)"
       )
       .eq("status", "PENDING")
       .order("created_at", { ascending: true }),
@@ -83,6 +85,19 @@ export default async function AdminDashboard() {
   const totalTasks = totalTasksResult.count;
   const pendingRequests = pendingRequestsResult.data;
   const members = membersResult.data;
+
+  // ── DIAGNOSTIC : log toutes les erreurs serveur ──
+  const diagErrors: { label: string; error: any }[] = [
+    { label: "classes", error: classesResult.error },
+    { label: "totalStudents", error: totalStudentsResult.error },
+    { label: "totalDelegates", error: totalDelegatesResult.error },
+    { label: "totalTasks", error: totalTasksResult.error },
+    { label: "pendingRequests", error: pendingRequestsResult.error },
+    { label: "members", error: membersResult.error },
+  ].filter((e) => !!e.error);
+  if (diagErrors.length > 0) {
+    console.error("[AdminDashboard] Erreurs Supabase:", JSON.stringify(diagErrors, null, 2));
+  }
 
   const membersList = (members ?? []) as any[];
   const memberGroups: { title: string; classId: string; members: any[] }[] = (classes ?? [])
@@ -100,6 +115,35 @@ export default async function AdminDashboard() {
 
   return (
     <div className="space-y-10 animate-fade-in">
+      {/* ── DIAGNOSTIC PANEL (visible seulement si erreurs) ── */}
+      {diagErrors.length > 0 && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 space-y-2">
+          <p className="text-sm font-bold text-red-400 flex items-center gap-2">
+            🔴 Erreurs Supabase détectées ({diagErrors.length})
+          </p>
+          {diagErrors.map((e) => (
+            <div key={e.label} className="rounded-lg bg-red-950/60 p-3 text-xs font-mono">
+              <p className="text-red-300 font-bold mb-1">[{e.label}]</p>
+              <p className="text-red-200">
+                <strong>code:</strong> {e.error?.code ?? "—"}
+              </p>
+              <p className="text-red-200">
+                <strong>message:</strong> {e.error?.message ?? "—"}
+              </p>
+              <p className="text-red-200">
+                <strong>details:</strong> {e.error?.details ?? "—"}
+              </p>
+              <p className="text-red-200">
+                <strong>hint:</strong> {e.error?.hint ?? "—"}
+              </p>
+            </div>
+          ))}
+          <p className="text-[11px] text-red-400/70">
+            💡 Retire ce bloc une fois le problème résolu.
+          </p>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
@@ -166,9 +210,20 @@ export default async function AdminDashboard() {
                         {r.profiles?.first_name} {r.profiles?.last_name}
                       </p>
                       <p className="text-xs text-muted-foreground">{r.profiles?.email}</p>
-                      <Badge variant="outline" className="mt-1 text-[10px]">
-                        Classe demandée : {r.classes?.name}
-                      </Badge>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <Badge variant="outline" className="text-[10px]">
+                          Classe demandée : {r.classes?.name}
+                        </Badge>
+                        {r.previous_class_id ? (
+                          <Badge variant="info" className="text-[10px]">
+                            Changement depuis {r.previous_class?.name ?? "une autre classe"}
+                          </Badge>
+                        ) : (
+                          <Badge variant="neutral" className="text-[10px]">
+                            Nouvelle inscription
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:shrink-0">

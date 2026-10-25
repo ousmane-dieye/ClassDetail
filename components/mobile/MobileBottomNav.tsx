@@ -51,7 +51,7 @@ const MORE_ICONS: Record<string, LucideIcon> = {
   "/dashboard/hints": Lightbulb,
   "/dashboard/recordings": Video,
   "/dashboard/notifications": Bell,
-  "/dashboard/settings/notifications": Settings,
+  "/dashboard/settings": Settings,
   "/dashboard/stats": BarChart3,
   "/dashboard/admin": Shield,
 };

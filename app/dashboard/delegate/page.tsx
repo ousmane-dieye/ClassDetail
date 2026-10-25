@@ -1,8 +1,20 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decideRegistrationAction } from "@/actions/auth";
-import { Users, CheckSquare, Clock, Check, X, ShieldAlert } from "lucide-react";
+import {
+  Users,
+  CheckSquare,
+  Clock,
+  Check,
+  X,
+  ShieldAlert,
+  CalendarDays,
+  ClipboardCheck,
+  FileText,
+  Plus,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -23,7 +35,10 @@ export default async function DelegateDashboard() {
   const admin = createAdminClient();
   const { data: pendingRequests } = await admin
     .from("registration_requests")
-    .select("id, created_at, profiles!registration_requests_user_id_fkey(first_name, last_name, email)")
+    .select(
+      "id, created_at, previous_class_id, profiles!registration_requests_user_id_fkey(first_name, last_name, email), " +
+        "previous_class:classes!registration_requests_previous_class_id_fkey(name)"
+    )
     .eq("class_id", classId)
     .eq("status", "PENDING");
 
@@ -60,6 +75,37 @@ export default async function DelegateDashboard() {
         <StatCard icon={Clock} label="Demandes en attente" value={(pendingRequests ?? []).length} color="warning" />
       </div>
 
+      {/* Actions rapides — la gestion de classe tient en un écran. */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-bold tracking-tight text-foreground">Actions rapides</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickActionLink
+            href="/dashboard/evaluations"
+            icon={ClipboardCheck}
+            label="Créer une évaluation"
+            description="Devoir surveillé, examen, TP…"
+          />
+          <QuickActionLink
+            href="/dashboard/evaluations"
+            icon={Plus}
+            label="Gérer les évaluations"
+            description="Publier, modifier, annuler"
+          />
+          <QuickActionLink
+            href="/dashboard/schedule"
+            icon={CalendarDays}
+            label="Emploi du temps"
+            description="Séances et exceptions"
+          />
+          <QuickActionLink
+            href="/dashboard/tasks"
+            icon={FileText}
+            label="Tâches & devoirs"
+            description="Publier un devoir"
+          />
+        </div>
+      </div>
+
       {/* Pending Registration Requests Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -84,6 +130,15 @@ export default async function DelegateDashboard() {
                       {r.profiles?.first_name} {r.profiles?.last_name}
                     </p>
                     <p className="text-xs text-muted-foreground">{r.profiles?.email}</p>
+                    {r.previous_class_id ? (
+                      <Badge variant="info" className="text-[10px]">
+                        Changement depuis {r.previous_class?.name ?? "une autre classe"}
+                      </Badge>
+                    ) : (
+                      <Badge variant="neutral" className="text-[10px]">
+                        Nouvelle inscription
+                      </Badge>
+                    )}
                     <p className="text-[11px] text-muted-foreground">
                       Demandé le {new Date(r.created_at).toLocaleDateString("fr-FR")}
                     </p>
@@ -140,5 +195,33 @@ function StatCard({
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
       </div>
     </Card>
+  );
+}
+
+/** Lien d'action rapide (délégué) — aucune logique métier, navigation seule. */
+function QuickActionLink({
+  href,
+  icon: Icon,
+  label,
+  description,
+}: {
+  href: string;
+  icon: any;
+  label: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 transition-all hover:border-primary/30 hover:shadow-lift"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform group-hover:scale-105">
+        <Icon size={18} />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-bold text-foreground">{label}</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>
+      </span>
+    </Link>
   );
 }

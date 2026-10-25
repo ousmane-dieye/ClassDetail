@@ -15,6 +15,7 @@ Plateforme SaaS académique multi-classes pour étudiants : tâches, documents, 
 - [Architecture temps réel](#architecture-temps-réel)
 - [Stack](#stack)
 - [Centre de notifications](#centre-de-notifications)
+- [Paramètres → Ma classe](#paramètres--ma-classe)
 - [Emploi du temps](#emploi-du-temps)
 - [Évaluations](#évaluations)
 - [Assistant IA contextuel](#assistant-ia-contextuel)
@@ -160,6 +161,35 @@ Chaque utilisateur choisit **par catégorie** ses deux canaux, indépendamment l
 
 Code : `lib/constants/notificationPreferences.ts` (identifiants, défauts, libellés, mapping type → catégorie), `lib/notifications/preferences.ts` (lecture), `actions/notification-preferences.ts` (enregistrement / réinitialisation), `components/settings/NotificationPreferencesForm.tsx`, `components/ui/Switch.tsx` (interrupteur accessible).
 
+## Paramètres → Ma classe
+
+Parcours : **Dashboard → Paramètres → Ma classe** (section ajoutée à la navigation interne du module Paramètres, atteignable depuis la sidebar desktop et le menu « Plus » mobile — tous rôles). Page : `/dashboard/settings/class`.
+
+Modèle d'appartenance :
+
+- `profiles.class_id` reste **LA source de l'appartenance effective** et de toutes les autorisations (`is_member_of()`). Un départ revient à `class_id = NULL` : les policies RLS de l'ancienne classe (tâches, documents, hints, chat, emploi du temps, évaluations, notifications de classe) deviennent fausses immédiatement côté base, pas seulement dans l'interface.
+- Le **statut d'approbation du compte** (existence d'une demande `ACCEPTED`, `is_approved_member()`) n'est jamais effacé par un départ : un compte approuvé qui quitte reste approuvé et peut redemander une classe sans repasser par `/register`.
+- `class_members` devient l'**historique réel** : ligne ouverte à l'acceptation, `left_at` renseigné au départ ou au transfert (unicité `(class_id, user_id)` préservée, aucun doublon, historique lisible par son propriétaire).
+- Une demande porte son origine : `registration_requests.previous_class_id` `NULL` = demande de **rejoindre**, sinon demande de **changement** — la classe actuelle est conservée jusqu'à l'acceptation, et l'utilisateur n'obtient **aucun accès** à la classe visée pendant l'attente.
+
+États et actions :
+
+| État | Affichage | Actions |
+|---|---|---|
+| Étudiant en classe | classe, niveau, année, rôle, « Membre depuis » | « Quitter la classe » et « Changer de classe » (dialogues de confirmation, contrôles désactivés pendant le traitement) |
+| Délégué / administrateur en classe | rôle + message | **aucune** : le rôle de délégué doit être révoqué d'abord (Administration → Gestion des Délégués) ; un ADMIN n'est pas rattaché ici |
+| Demande en attente | classe visée, origine, date, statut « En attente de validation » | « Annuler ma demande » uniquement |
+| Sans classe | état vide + sélecteur des classes réelles | « Demander à rejoindre cette classe » |
+| Dernière demande refusée / annulée | bandeau de statut | re-soumission possible |
+
+Workflow d'approbation **réutilisé** : la demande apparaît chez l'ADMIN et chez le délégué de la classe visée, étiquetée « Nouvelle inscription » ou « Changement depuis … ». `decideRegistrationAction` passe par la fonction atomique `classpulse_decide_request` : transition refusée par la base = **aucun** effet de bord (notification / email) exécuté. Un changement accepté notifie en interne mais n'envoie pas l'email d'activation d'accès (compte déjà approuvé).
+
+Sécurité (migration 0019, voir plus bas) : les quatre transitions (`classpulse_leave_class`, `classpulse_request_class_change`, `classpulse_cancel_request`, `classpulse_decide_request`) sont `SECURITY DEFINER` et **exécutables uniquement par `service_role`** — donc uniquement depuis les Server Actions, qui relèvent l'identité côté serveur. Chaque fonction réévalue les conditions métier (rôle, classe, statut `PENDING`) au moment de l'écriture, sous verrouillage `FOR UPDATE`. La policy `regreq_insert` est resserrée (décision P-020 : un client ne peut plus insérer une demande `ACCEPTED` ni une demande « depuis une classe »).
+
+Verrou d'accès : un utilisateur **avec** une classe garde toujours accès au dashboard, même avec une demande de changement en attente ou refusée (`dashboardGate`).
+
+Migration : `supabase/migrations/0019_class_membership.sql` (jamais exécutée automatiquement — voir l'ordre ci-dessous). Pour une base neuve, la section 21 est incluse dans `supabase/schema.sql`. Code : `actions/membership.ts`, `lib/business/membership.ts` (modèle d'affichage + verrou), `components/settings/MyClassSection.tsx`, `components/settings/SettingsTabs.tsx`, page `app/dashboard/settings/class/page.tsx`.
+
 ## Emploi du temps
 
 Page : `/dashboard/schedule` (entrée de la sidebar desktop et du menu « Plus » mobile — les 5 emplacements de la bottom nav ne changent pas). Carte « Aujourd'hui » sur le dashboard étudiant.
@@ -267,10 +297,11 @@ Pour une base **existante** déjà déployée avant la plateforme temps réel, e
 16. `supabase/migrations/0016_schedule.sql` (emploi du temps : couleurs de matières, séances récurrentes, exceptions datées, contrainte anti-chevauchement GiST, RLS, notifications `schedule`)
 17. `supabase/migrations/0017_evaluations.sql` (évaluations : enums, chapitres facultatifs, jointures ressources à FK composite, RLS (brouillons invisibles aux étudiants), Realtime, notifications `evaluations`)
 18. `supabase/migrations/0018_notification_preferences.sql` (préférences de notifications : table `notification_preferences` + RLS propriétaire, colonnes d'entité et index d'anti-doublon des emails pédagogiques)
+19. `supabase/migrations/0019_class_membership.sql` (appartenance à une classe : statut `CANCELLED`, `registration_requests.previous_class_id`, `class_members.left_at` + reprise de l'historique, RLS `regreq_insert` resserrée (P-020) et `class_members_select` enrichie, 4 fonctions `SECURITY DEFINER` réservées au `service_role` : départ, demande de changement, annulation, décision atomique)
 
 Tout est écrit pour être ré-exécutable sans erreur (`if not exists` / `drop policy if exists`).
 
-⚠️ Les migrations ne s'exécutent **jamais** automatiquement : `0016_schedule.sql`, `0017_evaluations.sql` et `0018_notification_preferences.sql` doivent être appliquées manuellement dans le SQL Editor (staging d'abord, dans cet ordre) — elles n'ont encore été exécutées sur aucune base.
+⚠️ Les migrations ne s'exécutent **jamais** automatiquement : `0016_schedule.sql`, `0017_evaluations.sql`, `0018_notification_preferences.sql` et `0019_class_membership.sql` doivent être appliquées manuellement dans le SQL Editor (staging d'abord, dans cet ordre) — elles n'ont encore été exécutées sur aucune base.
 
 Puis créez votre premier ADMIN (jamais automatiquement) :
 
