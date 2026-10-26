@@ -260,3 +260,113 @@ export function defaultColorForIndex(index: number): SubjectColorKey {
   const i = ((index % keys.length) + keys.length) % keys.length;
   return keys[i]!;
 }
+
+/**
+ * Ordre harmonique alterné pour la distribution automatique des couleurs.
+ * Évite d'attribuer des teintes trop proches (ex. bleu, indigo, violet)
+ * à des matières consécutives dans un même emploi du temps.
+ */
+export const HARMONIC_COLOR_ORDER: readonly SubjectColorKey[] = [
+  "indigo",
+  "emerald",
+  "amber",
+  "rose",
+  "teal",
+  "violet",
+  "cyan",
+  "orange",
+  "purple",
+  "blue",
+  "pink",
+  "green",
+  "fuchsia",
+  "sky",
+  "lime",
+  "red",
+  "yellow",
+  "slate",
+  "stone",
+  "gray",
+] as const;
+
+/**
+ * Attribution déterministe et stable basée sur l'identifiant immuable de la matière.
+ * Utilise un hachage FNV-1a sur l'id pour garantir que la matière conserve TOUJOURS
+ * la même couleur, indépendamment de l'ordre d'affichage, des filtres ou des rechargements.
+ */
+export function colorForSubjectId(id: string | null | undefined): SubjectColorKey {
+  if (!id) return "indigo";
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const index = Math.abs(hash >>> 0) % HARMONIC_COLOR_ORDER.length;
+  return HARMONIC_COLOR_ORDER[index]!;
+}
+
+/**
+ * Résout les couleurs de l'ensemble des matières d'une classe.
+ * - Si les matières ont déjà des couleurs distinctes valides (personnalisées), elles sont préservées.
+ * - Si les matières partagent toutes la valeur par défaut ("blue") ou ont des doublons,
+ *   une couleur distincte de la palette harmonique est attribuée de manière stable et déterministe
+ *   (triée par id immuable).
+ * - Aucune dépendance à l'ordre d'affichage dans la page : l'attribution est 100% stable.
+ */
+export function resolveClassSubjectColors<T extends { id: string; colorKey?: string | null }>(
+  subjects: T[]
+): Array<T & { colorKey: SubjectColorKey }> {
+  if (!subjects || subjects.length === 0) return [];
+
+  // Vérifier si toutes les matières sont sur la valeur par défaut "blue" ou non configurées
+  const validCustomKeys = subjects.filter(
+    (s) => s.colorKey && isSubjectColorKey(s.colorKey) && s.colorKey !== "blue"
+  );
+
+  // Si chaque matière a déjà une couleur distincte personnalisée (pas toutes 'blue') :
+  const allCustomAndUnique =
+    validCustomKeys.length === subjects.length &&
+    new Set(validCustomKeys.map((s) => s.colorKey)).size === subjects.length;
+
+  if (allCustomAndUnique) {
+    return subjects.map((s) => ({
+      ...s,
+      colorKey: (s.colorKey as SubjectColorKey) || "blue",
+    }));
+  }
+
+  // Tri par ID immuable pour une stabilité absolue quelle que soit la requête
+  const sorted = [...subjects].sort((a, b) => a.id.localeCompare(b.id));
+  const assigned = new Map<string, SubjectColorKey>();
+  const usedColors = new Set<SubjectColorKey>();
+
+  // Conserver en priorité les matières ayant une couleur explicite non-blue unique
+  for (const s of sorted) {
+    if (s.colorKey && isSubjectColorKey(s.colorKey) && s.colorKey !== "blue" && !usedColors.has(s.colorKey)) {
+      assigned.set(s.id, s.colorKey);
+      usedColors.add(s.colorKey);
+    }
+  }
+
+  // Pour les matières restantes (celles en 'blue' ou sans couleur), attribuer selon HARMONIC_COLOR_ORDER
+  let colorIdx = 0;
+  for (const s of sorted) {
+    if (!assigned.has(s.id)) {
+      while (colorIdx < HARMONIC_COLOR_ORDER.length && usedColors.has(HARMONIC_COLOR_ORDER[colorIdx]!)) {
+        colorIdx++;
+      }
+      const chosen =
+        colorIdx < HARMONIC_COLOR_ORDER.length
+          ? HARMONIC_COLOR_ORDER[colorIdx]!
+          : defaultColorForIndex(assigned.size);
+      assigned.set(s.id, chosen);
+      usedColors.add(chosen);
+      colorIdx++;
+    }
+  }
+
+  return subjects.map((s) => ({
+    ...s,
+    colorKey: assigned.get(s.id) ?? colorForSubjectId(s.id),
+  }));
+}

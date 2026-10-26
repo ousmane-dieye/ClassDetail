@@ -74,7 +74,7 @@ export function getEmailConfig(): EmailConfig {
     provider,
     from,
     fromName,
-    appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://classdetail.vercel.app",
     platformName: process.env.PLATFORM_NAME || "ClassPulse",
     adminContactEmail: process.env.ADMIN_CONTACT_EMAIL || from,
   };
@@ -206,11 +206,14 @@ export async function sendAuthenticationApprovedEmail(input: {
     // Ignoré : l'envoi ne dépend pas d'OpenAI.
   }
 
+  const base = (config.appUrl || "https://classdetail.vercel.app").replace(/\/+$/, "");
+  const targetUrl = `${base}/dashboard/student`;
+
   const html = renderAuthenticationApprovedTemplate({
     firstName: input.firstName,
     lastName: input.lastName,
     platformName: config.platformName,
-    appUrl: config.appUrl,
+    appUrl: targetUrl,
     adminContactEmail: config.adminContactEmail,
     personalizedIntro,
   });
@@ -219,7 +222,7 @@ export async function sendAuthenticationApprovedEmail(input: {
     to: input.to,
     subject: `Votre accès a été accepté — ${config.platformName}`,
     html,
-    text: `Bonjour ${input.firstName},\n\nVotre accès à ${config.platformName} a été accepté. Bienvenue !\n${config.appUrl}`,
+    text: `Bonjour ${input.firstName},\n\nVotre accès à ${config.platformName} a été accepté. Bienvenue !\n${targetUrl}`,
   });
 }
 

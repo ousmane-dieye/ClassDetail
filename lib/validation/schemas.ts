@@ -112,6 +112,7 @@ export const subjectSchema = z.object({
   classId: z.string().uuid(),
   name: z.string().trim().min(2).max(100),
   code: z.string().trim().max(20).optional(),
+  colorKey: z.enum(SUBJECT_COLOR_KEYS).optional(),
 });
 
 const driveUrlSchema = z

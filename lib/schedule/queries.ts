@@ -7,6 +7,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ScheduleExceptionRow, ScheduleSessionRow } from "@/types/database.types";
 import type { SessionException, SessionRecurrence } from "@/lib/schedule/occurrences";
+import { resolveClassSubjectColors } from "@/lib/constants/subjectColors";
 
 export interface SubjectLite {
   id: string;
@@ -128,11 +129,17 @@ export async function getScheduleSnapshot(
     return { snapshot: { sessions: [], exceptions: [], subjects: [] }, error: "Chargement de l'emploi du temps impossible." };
   }
 
+  const rawSubjects = (subjectsRes.data ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    colorKey: s.color_key,
+  }));
+
   return {
     snapshot: {
       sessions: (sessionsRes.data ?? []).map(toRecurrence),
       exceptions: (exceptionsRes.data ?? []).map(toException),
-      subjects: (subjectsRes.data ?? []).map((s) => ({ id: s.id, name: s.name, colorKey: s.color_key })),
+      subjects: resolveClassSubjectColors(rawSubjects),
     },
   };
 }

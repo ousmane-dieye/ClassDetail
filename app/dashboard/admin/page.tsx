@@ -10,6 +10,10 @@ import {
 } from "@/actions/classes";
 import { decideRegistrationAction } from "@/actions/auth";
 import {
+  SUBJECT_COLOR_KEYS,
+  getSubjectColor,
+} from "@/lib/constants/subjectColors";
+import {
   StudentsManagementSection,
   type StudentItem,
   type ClassOption,
@@ -369,6 +373,17 @@ export default async function AdminDashboard() {
                   required
                 />
                 <Input name="code" placeholder="Code optionnel (ex: CS201)" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Couleur distinctive (optionnelle)</label>
+                  <Select name="colorKey" defaultValue="">
+                    <option value="">Automatique (harmonieuse sans doublon)</option>
+                    {SUBJECT_COLOR_KEYS.map((k) => (
+                      <option key={k} value={k}>
+                        {getSubjectColor(k).label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
                 <Button type="submit" className="w-full gap-1.5">
                   <Plus size={15} />
                   <span>Ajouter la matière</span>

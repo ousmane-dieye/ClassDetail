@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   SUBJECT_COLOR_KEYS,
+  HARMONIC_COLOR_ORDER,
   getSubjectColor,
   isSubjectColorKey,
   defaultColorForIndex,
+  colorForSubjectId,
+  resolveClassSubjectColors,
 } from "@/lib/constants/subjectColors";
 
 // ---------------------------------------------------------------------------
@@ -112,5 +115,100 @@ describe("defaultColorForIndex — attribution stable", () => {
     for (let i = 0; i < 25; i++) {
       expect(defaultColorForIndex(i)).toBe(defaultColorForIndex(i));
     }
+  });
+});
+
+describe("colorForSubjectId — hachage déterministe sur id", () => {
+  it("retourne toujours une couleur valide de la palette", () => {
+    const ids = [
+      "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "7b1c4110-33aa-44bc-8765-1ad21dec0999",
+      "subject-math-1",
+      "subject-algo-2",
+      "",
+    ];
+    for (const id of ids) {
+      const color = colorForSubjectId(id);
+      expect(SUBJECT_COLOR_KEYS).toContain(color);
+      expect(HARMONIC_COLOR_ORDER).toContain(color);
+    }
+  });
+
+  it("est 100% stable pour un même id (invariance au rechargement)", () => {
+    const id = "c56a4180-65aa-42ec-a945-5fd21dec0538";
+    const first = colorForSubjectId(id);
+    for (let i = 0; i < 10; i++) {
+      expect(colorForSubjectId(id)).toBe(first);
+    }
+  });
+});
+
+describe("resolveClassSubjectColors — résolution sans doublon pour une classe", () => {
+  it("attribue des couleurs distinctes quand toutes les matières ont la valeur par défaut 'blue'", () => {
+    const subjects = [
+      { id: "sub-1", name: "Mathématiques", colorKey: "blue" },
+      { id: "sub-2", name: "Algorithmique", colorKey: "blue" },
+      { id: "sub-3", name: "Base de données", colorKey: "blue" },
+      { id: "sub-4", name: "Réseaux", colorKey: "blue" },
+      { id: "sub-5", name: "Anglais", colorKey: "blue" },
+    ];
+
+    const resolved = resolveClassSubjectColors(subjects);
+    expect(resolved).toHaveLength(5);
+
+    // Toutes les couleurs attribuées doivent être uniques
+    const assignedColors = resolved.map((s) => s.colorKey);
+    expect(new Set(assignedColors).size).toBe(5);
+
+    // Toutes les couleurs font partie de la palette
+    for (const color of assignedColors) {
+      expect(isSubjectColorKey(color)).toBe(true);
+    }
+  });
+
+  it("l'attribution reste 100% identique et stable après actualisation", () => {
+    const subjects = [
+      { id: "sub-1", name: "Mathématiques", colorKey: "blue" },
+      { id: "sub-2", name: "Algorithmique", colorKey: "blue" },
+      { id: "sub-3", name: "Base de données", colorKey: "blue" },
+    ];
+
+    const first = resolveClassSubjectColors(subjects);
+    const second = resolveClassSubjectColors(subjects);
+
+    expect(first.map((s) => s.colorKey)).toEqual(second.map((s) => s.colorKey));
+  });
+
+  it("l'ordre des matières dans la liste ne change pas les couleurs attribuées (tri interne par id)", () => {
+    const s1 = { id: "a1", name: "Matière A", colorKey: "blue" };
+    const s2 = { id: "b2", name: "Matière B", colorKey: "blue" };
+    const s3 = { id: "c3", name: "Matière C", colorKey: "blue" };
+
+    const order1 = resolveClassSubjectColors([s1, s2, s3]);
+    const order2 = resolveClassSubjectColors([s3, s1, s2]);
+
+    const colorOfA_1 = order1.find((s) => s.id === "a1")?.colorKey;
+    const colorOfA_2 = order2.find((s) => s.id === "a1")?.colorKey;
+    expect(colorOfA_1).toBe(colorOfA_2);
+
+    const colorOfB_1 = order1.find((s) => s.id === "b2")?.colorKey;
+    const colorOfB_2 = order2.find((s) => s.id === "b2")?.colorKey;
+    expect(colorOfB_1).toBe(colorOfB_2);
+  });
+
+  it("préserve les couleurs personnalisées explicites déjà configurées", () => {
+    const subjects = [
+      { id: "sub-1", name: "Mathématiques", colorKey: "emerald" },
+      { id: "sub-2", name: "Algorithmique", colorKey: "violet" },
+      { id: "sub-3", name: "Base de données", colorKey: "blue" },
+    ];
+
+    const resolved = resolveClassSubjectColors(subjects);
+    expect(resolved.find((s) => s.id === "sub-1")?.colorKey).toBe("emerald");
+    expect(resolved.find((s) => s.id === "sub-2")?.colorKey).toBe("violet");
+  });
+
+  it("retourne un tableau vide pour une entrée vide", () => {
+    expect(resolveClassSubjectColors([])).toEqual([]);
   });
 });

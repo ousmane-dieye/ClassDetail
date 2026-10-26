@@ -61,10 +61,14 @@ export async function registerAction(formData: FormData) {
     return { error: "Cette adresse email est déjà utilisée. Connectez-vous pour soumettre une nouvelle demande." };
   }
 
+  const appOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://classdetail.vercel.app").replace(/\/+$/, "");
   // 1. Création du compte Supabase Auth
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      emailRedirectTo: `${appOrigin}/dashboard/student`,
+    },
   });
 
   if (authError || !authData.user) {
@@ -325,7 +329,7 @@ export async function requestPasswordResetAction(formData: FormData) {
   }
 
   const supabase = createClient();
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const origin = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 
   // L'erreur réelle (compte inexistant, SMTP indisponible) est ignorée côté réponse client (anti-énumération).
   await supabase.auth.resetPasswordForEmail(email, {

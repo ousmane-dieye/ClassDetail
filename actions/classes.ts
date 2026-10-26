@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { classSchema, subjectSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { createNotification } from "@/lib/notifications/service";
+import {
+  HARMONIC_COLOR_ORDER,
+  defaultColorForIndex,
+  isSubjectColorKey,
+} from "@/lib/constants/subjectColors";
 
 export async function createClassAction(formData: FormData) {
   const parsed = classSchema.safeParse({
@@ -39,18 +44,50 @@ export async function createSubjectAction(formData: FormData) {
     classId: formData.get("classId"),
     name: formData.get("name"),
     code: formData.get("code") || undefined,
+    colorKey: formData.get("colorKey") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
 
   const supabase = createClient();
+  let colorKey = parsed.data.colorKey;
+  if (!colorKey) {
+    // Sélection automatique de la première couleur disponible dans la classe
+    const { data: existing } = await supabase
+      .from("subjects")
+      .select("color_key")
+      .eq("class_id", parsed.data.classId);
+    const used = new Set(existing?.map((s) => s.color_key));
+    colorKey =
+      HARMONIC_COLOR_ORDER.find((k) => !used.has(k)) ??
+      defaultColorForIndex(existing?.length ?? 0);
+  }
+
   const { error } = await supabase.from("subjects").insert({
     class_id: parsed.data.classId,
     name: parsed.data.name,
     code: parsed.data.code ?? null,
+    color_key: colorKey,
   });
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard/schedule");
+  return { success: true };
+}
+
+export async function updateSubjectColorAction(subjectId: string, colorKey: string) {
+  if (!isSubjectColorKey(colorKey)) {
+    return { error: "Couleur de matière invalide." };
+  }
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("subjects")
+    .update({ color_key: colorKey })
+    .eq("id", subjectId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/admin");
+  revalidatePath("/dashboard/schedule");
   return { success: true };
 }
 

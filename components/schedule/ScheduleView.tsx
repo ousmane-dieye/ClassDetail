@@ -268,13 +268,16 @@ export function ScheduleView({
 
       {/* ── Légende des matières ── */}
       {subjects.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
           {subjects.map((s) => {
             const c = getSubjectColor(s.colorKey);
             return (
-              <span key={s.id} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-full", c.dot)} />
-                <span className="text-[11px] font-medium text-muted-foreground">{s.name}</span>
+              <span
+                key={s.id}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/80 px-2.5 py-1 text-xs font-semibold text-foreground shadow-2xs backdrop-blur-xs transition-colors hover:border-border"
+              >
+                <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", c.dot)} />
+                <span className="truncate max-w-[160px]">{s.name}</span>
               </span>
             );
           })}

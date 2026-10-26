@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { EvaluationRow, HintType } from "@/types/database.types";
 import { toEvaluationView, type EvaluationView } from "@/lib/evaluations/constants";
 import { getZonedNow } from "@/lib/schedule/dates";
+import { resolveClassSubjectColors } from "@/lib/constants/subjectColors";
 
 export interface SubjectLite {
   id: string;
@@ -50,14 +51,16 @@ export async function getEvaluationsSnapshot(
     return { snapshot: empty, error: "Chargement des évaluations impossible." };
   }
 
+  const rawSubjects = (subjectsRes.data ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    colorKey: s.color_key,
+  }));
+
   return {
     snapshot: {
       evaluations: (evaluationsRes.data ?? []).map((row) => toEvaluationView(row)),
-      subjects: (subjectsRes.data ?? []).map((s) => ({
-        id: s.id,
-        name: s.name,
-        colorKey: s.color_key,
-      })),
+      subjects: resolveClassSubjectColors(rawSubjects),
     },
   };
 }
@@ -260,11 +263,14 @@ export async function getUpcomingEvaluationsForClass(
     supabase.from("subjects").select("id, name, color_key").eq("class_id", classId),
   ]);
 
+  const resolvedSubjects = resolveClassSubjectColors(
+    (subjectsRes.data ?? []).map((s) => ({ id: s.id, name: s.name, colorKey: s.color_key }))
+  );
   const subjectNames: Record<string, string> = {};
   const subjectColors: Record<string, string> = {};
-  for (const s of subjectsRes.data ?? []) {
+  for (const s of resolvedSubjects) {
     subjectNames[s.id] = s.name;
-    subjectColors[s.id] = s.color_key;
+    subjectColors[s.id] = s.colorKey;
   }
 
   return (evaluationsRes.data ?? []).map((row) => ({
