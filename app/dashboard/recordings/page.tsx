@@ -2,18 +2,25 @@ import { createClient } from "@/lib/supabase/server";
 import { createRecordingAction, deleteRecordingAction } from "@/actions/recordings";
 import { RealtimeListSync } from "@/components/RealtimeListSync";
 import { PageHeader } from "@/components/PageHeader";
-import { Video, ExternalLink, Plus, Calendar, PlayCircle } from "lucide-react";
-import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
+import { RecordingsLibrary } from "@/components/recordings/RecordingsLibrary";
+import { Video, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { CS_IMAGES } from "@/lib/constants/images";
+import {
+  DEFAULT_RECORDING_SORT,
+  isRecordingSortKey,
+  type RecordingListItem,
+  type RecordingSortKey,
+} from "@/lib/recordings/listing";
 
-export default async function RecordingsPage() {
+export default async function RecordingsPage({
+  searchParams,
+}: {
+  searchParams: { q?: string; sort?: string };
+}) {
   const supabase = createClient();
   const {
     data: { user },
@@ -22,16 +29,39 @@ export default async function RecordingsPage() {
 
   const classId = profile?.class_id ?? "";
 
-  // 2 requêtes indépendantes → parallélisées
-  const [{ data: recordings }, { data: subjects }] = await Promise.all([
+  // 2 requêtes indépendantes → parallélisées (RLS inchangée : classe seule)
+  const [{ data: recordings, error: recordingsError }, { data: subjects }] = await Promise.all([
     supabase
       .from("recordings")
-      .select("id, title, description, date, drive_url, class_id, creator_id, created_at")
+      .select("id, title, description, date, drive_url, class_id, subject_id, creator_id, created_at")
       .eq("class_id", classId)
       .order("date", { ascending: false }),
     supabase.from("subjects").select("id, name").eq("class_id", classId),
   ]);
   const canManage = profile?.role === "ADMIN" || profile?.role === "DELEGATE";
+
+  // Tri initial : option de l'URL si elle est valide, sinon le plus récent.
+  const initialSort: RecordingSortKey = isRecordingSortKey(searchParams.sort)
+    ? searchParams.sort
+    : DEFAULT_RECORDING_SORT;
+
+  // Incident de chargement : jamais de bibliothèque « vide » présentée à tort.
+  const loadError = recordingsError
+    ? "Chargement des cours enregistrés impossible. Réessayez dans un instant."
+    : null;
+
+  // Mappeage applicatif subject_id → nom de la matière (pas de jointure
+  // PostgREST, convention du projet) : le nom est ensuite cherchable côté client.
+  const subjectNames = new Map((subjects ?? []).map((s) => [s.id, s.name]));
+  const items: RecordingListItem[] = (recordings ?? []).map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    date: r.date,
+    createdAt: r.created_at,
+    driveUrl: r.drive_url,
+    subjectName: (r.subject_id && subjectNames.get(r.subject_id)) || null,
+  }));
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -42,11 +72,11 @@ export default async function RecordingsPage() {
         icon={Video}
         title="Cours Enregistrés"
         description="Visionnez les récapitulatifs et séances de cours enregistrées de votre promotion."
-        badge={`${(recordings ?? []).length} enregistrement(s)`}
+        badge={`${items.length} enregistrement(s)`}
       />
 
       {/* Formulaire réservé délégués / admins (dépliable) */}
-      {canManage && (
+      {canManage && !loadError && (
         <details className="group">
           <summary className="inline-flex cursor-pointer select-none items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-subtle transition-all duration-150 hover:bg-primary/90 hover:shadow-lift active:scale-[0.98]">
             <Plus size={18} />
@@ -86,69 +116,26 @@ export default async function RecordingsPage() {
         </details>
       )}
 
-      {/* Galerie des enregistrements */}
-      <div className="space-y-4">
-        {(recordings ?? []).length === 0 ? (
-          <EmptyState
-            imageUrl={CS_IMAGES.emptyDocs}
-            title="Aucun cours enregistré"
-            description="Les séances de cours enregistrées n'ont pas encore été mises en ligne."
-          />
-        ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {(recordings ?? []).map((r) => (
-              <Card key={r.id} className="flex flex-col justify-between overflow-hidden transition-all hover:border-primary/25 hover:shadow-lift">
-                <div className="space-y-3 p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-info/15 text-info">
-                      <PlayCircle size={26} />
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      <Calendar size={12} className="mr-1 inline" />
-                      {new Date(r.date).toLocaleDateString("fr-FR")}
-                    </Badge>
-                  </div>
+      {/* Erreur de chargement : message compréhensible, pas de faux « vide » */}
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-danger/30 bg-danger/8 px-4 py-3 text-sm font-semibold text-danger"
+        >
+          {loadError}
+        </div>
+      )}
 
-                  <div>
-                    <h3 className="font-bold text-foreground line-clamp-2">{r.title}</h3>
-                    {r.description && (
-                      <p className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">{r.description}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 pt-3 border-t border-border/60 bg-muted/20">
-                  <span className="text-xs font-medium text-muted-foreground">Vidéo HD</span>
-
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={r.drive_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-all hover:bg-primary/90 shadow-subtle"
-                    >
-                      <PlayCircle size={14} />
-                      <span>Visionner</span>
-                    </a>
-
-                    {canManage && (
-                      <ConfirmDeleteButton
-                        action={deleteRecordingAction}
-                        resourceId={r.id}
-                        resourceName={r.title}
-                        resourceLabel="cet enregistrement"
-                        buttonTitle="Supprimer la vidéo"
-                        className="h-8 w-8"
-                        iconSize={14}
-                      />
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Galerie : recherche, tri et états (client, sans rechargement de page) */}
+      {!loadError && (
+        <RecordingsLibrary
+          recordings={items}
+          canManage={canManage}
+          onDelete={deleteRecordingAction}
+          initialQuery={typeof searchParams.q === "string" ? searchParams.q : ""}
+          initialSort={initialSort}
+        />
+      )}
     </div>
   );
 }

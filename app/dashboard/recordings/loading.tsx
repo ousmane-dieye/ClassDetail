@@ -12,6 +12,15 @@ export default function RecordingsLoading() {
         </div>
       </div>
 
+      {/* Barre recherche / tri */}
+      <div className="rounded-2xl border border-border bg-card p-3.5">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-full sm:w-56" />
+          <Skeleton className="hidden h-4 w-32 sm:block" />
+        </div>
+      </div>
+
       {/* Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (
