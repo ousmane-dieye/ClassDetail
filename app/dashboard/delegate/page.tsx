@@ -20,6 +20,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function DelegateDashboard() {
   const supabase = createClient();
   const {

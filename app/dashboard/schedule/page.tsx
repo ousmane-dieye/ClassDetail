@@ -18,6 +18,8 @@ import {
 import type { UserRole } from "@/types/database.types";
 
 export const metadata = { title: "Emploi du temps — ClassPulse" };
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function SchedulePage({
   searchParams,
