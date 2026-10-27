@@ -71,7 +71,7 @@ function setSmtpEnv() {
   process.env.EMAIL_PASSWORD = "super-secret-password";
   process.env.OPENAI_API_KEY = "";
   process.env.RESEND_API_KEY = "";
-  process.env.NEXT_PUBLIC_APP_URL = "https://classpulse.app";
+  process.env.APP_URL = "https://classpulse.app";
   process.env.PLATFORM_NAME = "ClassPulse";
   process.env.ADMIN_CONTACT_EMAIL = ADMIN_EMAIL;
 }

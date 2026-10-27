@@ -74,7 +74,7 @@ export function getEmailConfig(): EmailConfig {
     provider,
     from,
     fromName,
-    appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://classdetail.vercel.app",
+    appUrl: process.env.APP_URL || "https://classdetail.vercel.app",
     platformName: process.env.PLATFORM_NAME || "ClassPulse",
     adminContactEmail: process.env.ADMIN_CONTACT_EMAIL || from,
   };

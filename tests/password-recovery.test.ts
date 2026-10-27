@@ -131,7 +131,7 @@ describe("requestPasswordResetAction — étape 1 (email)", () => {
     expect(result).toEqual({ success: true });
     expect(state.resetCalled?.email).toBe("etudiant@ecole.fr");
     expect(state.resetCalled?.redirectTo).toBe(
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/confirm?next=/reset-password`
+      `${process.env.APP_URL ?? "http://localhost:3000"}/auth/confirm?next=/reset-password`
     );
   });
 

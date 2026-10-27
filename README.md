@@ -344,7 +344,9 @@ OPENAI_MODEL=gpt-4o-mini
 
 # --- Identité de la plateforme ---
 PLATFORM_NAME=ClassPulse
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+# URL absolue de l'app — variable SERVEUR (sans préfixe NEXT_PUBLIC_) :
+# sert à construire les URL d'emails d'auth, de confirmation et de reset.
+APP_URL=http://localhost:3000
 NEXT_PUBLIC_APP_TIMEZONE=Africa/Dakar
 ADMIN_CONTACT_EMAIL=admin@votredomaine.com
 EMAIL_TEST_ALLOWLIST=admin@votredomaine.com
@@ -354,6 +356,8 @@ CRON_SECRET=
 ```
 
 `CRON_SECRET` : valeur aléatoire forte (`openssl rand -hex 32`). Sans le header `Authorization: Bearer <CRON_SECRET>`, les endpoints `/api/cron/*` répondent 401.
+
+`APP_URL` : URL absolue de l'application, lue **uniquement côté serveur** (Server Actions `actions/auth.ts`, service email `lib/email/emailService.ts`) pour construire les liens d'inscription, de confirmation et de récupération de mot de passe. Elle n'est donc **pas** préfixée `NEXT_PUBLIC_` et n'est jamais intégrée au bundle client. À configurer par environnement sur Vercel (Production : domaine de production ; Preview : domaine/URL de l'aperçu ; Development : `http://localhost:3000`). Les `/` finaux sont automatiquement retirés.
 
 ⚠️ Les clés (`EMAIL_PASSWORD`, `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`) ne sont **jamais** exposées au frontend ni préfixées `NEXT_PUBLIC_`.
 
