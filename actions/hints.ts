@@ -23,6 +23,18 @@ export async function createHintAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
+  // Anti-doublon : vérifie si le sujet d'examen a déjà été publié
+  const { data: existing } = await supabase
+    .from("hints")
+    .select("id")
+    .eq("class_id", parsed.data.classId)
+    .eq("drive_url", parsed.data.driveUrl)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: "Ce hint / sujet existe déjà dans la bibliothèque." };
+  }
+
   const { data: created, error } = await supabase
     .from("hints")
     .insert({

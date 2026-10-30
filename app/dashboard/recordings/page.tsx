@@ -16,6 +16,8 @@ import {
   type RecordingSortKey,
 } from "@/lib/recordings/listing";
 
+import { CreateRecordingForm } from "@/components/recordings/CreateRecordingForm";
+
 export default async function RecordingsPage({
   searchParams,
 }: {
@@ -80,7 +82,7 @@ export default async function RecordingsPage({
         <details className="group">
           <summary className="inline-flex cursor-pointer select-none items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-subtle transition-all duration-150 hover:bg-primary/90 hover:shadow-lift active:scale-[0.98]">
             <Plus size={18} />
-            <span>Publier un enregistrement de cours</span>
+            <span>Enregistrer un cours</span>
           </summary>
 
           <div className="mt-4">
@@ -91,25 +93,10 @@ export default async function RecordingsPage({
                   <span>Nouvel enregistrement de cours</span>
                 </div>
 
-                <form action={async (fd) => { "use server"; await createRecordingAction(fd); }} className="grid gap-4 md:grid-cols-2">
-                  <input type="hidden" name="classId" value={profile!.class_id!} />
-                  <Input name="title" placeholder="Titre de la séance (ex: Cours Algorithmique Avancée)" required />
-
-                  <Select name="subjectId" required defaultValue="">
-                    <option value="">Sélectionner une matière</option>
-                    {(subjects ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </Select>
-
-
-                  <Input name="date" type="date" required />
-                  <Input name="driveUrl" placeholder="Lien Google Drive de la vidéo" required />
-                  <Textarea name="description" placeholder="Chapitres et points abordés..." className="md:col-span-2" />
-
-                  <Button type="submit" className="md:col-span-2 gap-2 h-11 text-base">
-                    <Plus size={18} />
-                    <span>Publier le cours enregistré</span>
-                  </Button>
-                </form>
+                <CreateRecordingForm
+                  classId={profile!.class_id!}
+                  subjects={subjects ?? []}
+                />
               </CardContent>
             </Card>
           </div>

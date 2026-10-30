@@ -13,6 +13,8 @@ import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CS_IMAGES } from "@/lib/constants/images";
 
+import { CreateHintForm } from "@/components/hints/CreateHintForm";
+
 export default async function HintsPage() {
   const supabase = createClient();
   const {
@@ -66,32 +68,7 @@ export default async function HintsPage() {
                 <span>Nouveau Hint / Sujet d'examen</span>
               </div>
 
-              <form action={async (fd) => { "use server"; await createHintAction(fd); }} className="grid gap-4 md:grid-cols-2">
-                <input type="hidden" name="classId" value={profile!.class_id!} />
-                <Input name="title" placeholder="Titre du sujet (ex: Examen Final Systèmes d'Exploitation)" required />
-
-                <Select name="subjectId" required defaultValue="">
-                  <option value="">Sélectionner une matière</option>
-                  {(subjects ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </Select>
-
-                <Input name="year" placeholder="Année académique (ex: 2024-2025)" required />
-
-                <Select name="type" required defaultValue="">
-                  <option value="">Sélectionner le type (ex: Examen, Devoir...)</option>
-                  {["DEVOIR", "EXAMEN", "CONTROLE", "TP", "PROJET", "AUTRE"].map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </Select>
-
-
-                <Input name="driveUrl" placeholder="Lien Google Drive du sujet / corrigé" required className="md:col-span-2" />
-
-                <Button type="submit" variant="default" className="md:col-span-2 gap-2 h-11 text-base">
-                  <Plus size={18} />
-                  <span>Publier le Hint</span>
-                </Button>
-              </form>
+              <CreateHintForm classId={profile!.class_id!} subjects={subjects ?? []} />
             </CardContent>
           </Card>
         </div>
@@ -146,6 +123,7 @@ export default async function HintsPage() {
                         resourceId={h.id}
                         resourceName={h.title}
                         resourceLabel="ce hint"
+                        successMessage="Hint supprimé avec succès."
                         buttonTitle="Supprimer le Hint"
                         className="h-8 w-8"
                         iconSize={14}

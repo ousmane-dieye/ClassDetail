@@ -28,6 +28,7 @@ import {
   deleteStudentAccountAction,
 } from "@/actions/admin-students";
 import { appointDelegateAction, removeDelegateAction } from "@/actions/classes";
+import { toast } from "@/lib/toast";
 
 /* ──────────────────────────────────────────────────────────────────
    Types
@@ -136,11 +137,14 @@ export function StudentsManagementSection({
       const result = await removeStudentFromClassAction(studentToRemove.id);
       if ("error" in result) {
         setRemoveError(result.error);
+        toast.error(result.error);
       } else {
+        const msg = `${studentToRemove.firstName} ${studentToRemove.lastName} a été retiré(e) de sa classe avec succès.`;
         setFlashMessage({
           type: "success",
-          text: `${studentToRemove.firstName} ${studentToRemove.lastName} a été retiré(e) de sa classe avec succès.`,
+          text: msg,
         });
+        toast.success(msg);
         setStudentToRemove(null);
       }
     });
@@ -155,11 +159,14 @@ export function StudentsManagementSection({
       const result = await deleteStudentAccountAction(studentToDelete.id);
       if ("error" in result) {
         setDeleteError(result.error);
+        toast.error(result.error);
       } else {
+        const msg = `Le compte de ${studentToDelete.firstName} ${studentToDelete.lastName} a été définitivement supprimé.`;
         setFlashMessage({
           type: "success",
-          text: `Le compte de ${studentToDelete.firstName} ${studentToDelete.lastName} a été définitivement supprimé.`,
+          text: msg,
         });
+        toast.success(msg);
         setStudentToDelete(null);
       }
     });
@@ -171,22 +178,28 @@ export function StudentsManagementSection({
     try {
       if (student.role === "DELEGATE") {
         await removeDelegateAction(student.id);
+        const msg = `Le rôle de délégué a été révoqué pour ${student.firstName} ${student.lastName}.`;
         setFlashMessage({
           type: "success",
-          text: `Le rôle de délégué a été révoqué pour ${student.firstName} ${student.lastName}.`,
+          text: msg,
         });
+        toast.success(msg);
       } else {
         await appointDelegateAction(student.id);
+        const msg = `${student.firstName} ${student.lastName} a été nommé(e) délégué(e) avec succès.`;
         setFlashMessage({
           type: "success",
-          text: `${student.firstName} ${student.lastName} a été nommé(e) délégué(e) avec succès.`,
+          text: msg,
         });
+        toast.success(msg);
       }
     } catch {
+      const msg = "Une erreur est survenue lors de la mise à jour du rôle délégué.";
       setFlashMessage({
         type: "error",
-        text: "Une erreur est survenue lors de la mise à jour du rôle délégué.",
+        text: msg,
       });
+      toast.error(msg);
     } finally {
       setDelegatePendingId(null);
     }

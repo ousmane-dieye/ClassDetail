@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { toast } from "@/lib/toast";
 
 export interface DeleteActionResponse {
   success?: boolean;
@@ -14,6 +15,7 @@ interface ConfirmDeleteButtonProps {
   resourceId: string;
   resourceName: string;
   resourceLabel: string;
+  successMessage?: string;
   buttonTitle?: string;
   className?: string;
   iconSize?: number;
@@ -28,6 +30,7 @@ export function ConfirmDeleteButton({
   resourceId,
   resourceName,
   resourceLabel,
+  successMessage,
   buttonTitle,
   className,
   iconSize = 14,
@@ -96,14 +99,19 @@ export function ConfirmDeleteButton({
     try {
       const res = await action(resourceId);
       if (res && !res.success) {
-        setError(res.error ?? "Une erreur est survenue lors de la suppression.");
+        const msg = res.error ?? "Une erreur est survenue lors de la suppression.";
+        setError(msg);
+        toast.error(msg);
         setPending(false);
         return;
       }
+      toast.success(successMessage ?? `${resourceName} a été supprimé(e) avec succès.`);
       setOpen(false);
       setPending(false);
     } catch {
-      setError("Une erreur est survenue lors de la suppression.");
+      const msg = "Une erreur est survenue lors de la suppression.";
+      setError(msg);
+      toast.error(msg);
       setPending(false);
     }
   };

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { toast } from "@/lib/toast";
 
 type FilterKey = "all" | "unread" | NotificationCategory;
 
@@ -124,9 +125,15 @@ export function NotificationsCenter({ userId, initial }: { userId: string; initi
   const handleMarkAll = useCallback(async () => {
     if (marking) return;
     setMarking(true);
-    await markAllNotificationsReadAction();
-    setNotifications((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })));
-    setMarking(false);
+    try {
+      await markAllNotificationsReadAction();
+      setNotifications((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })));
+      toast.success("Toutes les notifications ont été marquées comme lues.");
+    } catch {
+      toast.error("Impossible de marquer les notifications comme lues.");
+    } finally {
+      setMarking(false);
+    }
   }, [marking]);
 
   const visibleGroups = useMemo(() => {

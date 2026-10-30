@@ -27,6 +27,8 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.ico" },
 };
 
+import { ToastContainer } from "@/components/ui/ToastContainer";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
@@ -37,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="min-h-screen font-sans bg-background text-foreground antialiased">
         {children}
+        <ToastContainer />
       </body>
     </html>
   );

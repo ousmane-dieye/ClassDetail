@@ -406,7 +406,7 @@ export function SessionFormDialog({
             <Button ref={cancelRef} type="button" variant="outline" onClick={onClose} disabled={pending}>
               Annuler
             </Button>
-            <Button type="submit" isLoading={pending}>
+            <Button type="submit" isLoading={pending} loadingText="Enregistrement…">
               {initial?.sessionId ? "Enregistrer" : publish ? "Créer et publier" : "Enregistrer le brouillon"}
             </Button>
           </div>

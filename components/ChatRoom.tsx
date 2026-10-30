@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { toast } from "@/lib/toast";
 
 interface Props {
   classId: string;
@@ -165,8 +166,10 @@ export function ChatRoom({
         if (res.success) {
           setAnnounceContent("");
           setAnnounceMode(false);
+          toast.success("Annonce de classe publiée avec succès.");
         } else {
           setMessages((prev) => prev.filter((m) => m.temp_id !== tempId));
+          toast.error(res.error ?? "Impossible de publier l'annonce.");
         }
       });
     });
@@ -196,6 +199,7 @@ export function ChatRoom({
       void sendChatMessageAction(formData).then((res) => {
         if (!res.success) {
           setMessages((prev) => prev.filter((m) => m.temp_id !== tempId));
+          toast.error(res.error ?? "Échec de l'envoi du message.");
         }
       });
     });
@@ -209,6 +213,9 @@ export function ChatRoom({
       void deleteChatMessageAction(id).then((res) => {
         if (!res.success && removed) {
           setMessages((prev) => (prev.some((m) => m.id === id) ? prev : [...prev, removed]));
+          toast.error(res.error ?? "Impossible de supprimer le message.");
+        } else if (res.success) {
+          toast.success("Message supprimé.");
         }
       });
     });
@@ -317,7 +324,14 @@ export function ChatRoom({
             maxLength={2000}
             placeholder="Rédigez l'annonce officielle pour la promotion..."
           />
-          <Button type="submit" variant="warning" disabled={isPending || !announceContent.trim()} className="self-end gap-2">
+          <Button
+            type="submit"
+            variant="warning"
+            isLoading={isPending}
+            loadingText="Publication…"
+            disabled={isPending || !announceContent.trim()}
+            className="self-end gap-2"
+          >
             <Megaphone size={16} />
             <span>Publier l'annonce</span>
           </Button>
@@ -334,6 +348,7 @@ export function ChatRoom({
           required
           placeholder="Envoyer un message à la classe…"
           className="flex-1"
+          disabled={isPending}
         />
         {canPostAnnouncement && (
           <Button
@@ -346,7 +361,13 @@ export function ChatRoom({
             <Megaphone size={18} />
           </Button>
         )}
-        <Button type="submit" disabled={isPending || !messageInput.trim()} size="icon">
+        <Button
+          type="submit"
+          disabled={isPending || !messageInput.trim()}
+          isLoading={isPending}
+          size="icon"
+          aria-label="Envoyer le message"
+        >
           <Send size={18} />
         </Button>
       </form>

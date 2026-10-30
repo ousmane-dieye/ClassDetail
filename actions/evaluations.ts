@@ -221,6 +221,22 @@ export async function createEvaluationAction(input: unknown): Promise<Evaluation
   const subjectCheck = await assertSubjectInClass(data.classId, data.subjectId);
   if (!subjectCheck.ok) return { error: subjectCheck.error };
 
+  const supabase = createClient();
+
+  // Protection anti-doublon : évite la création simultanée d'évaluations identiques
+  const { data: existing } = await supabase
+    .from("evaluations")
+    .select("id")
+    .eq("class_id", data.classId)
+    .eq("subject_id", data.subjectId)
+    .eq("title", data.title)
+    .eq("date", data.date)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: "Une évaluation identique existe déjà pour cette matière et cette date." };
+  }
+
   const { warnings } = await computeWarnings({
     classId: data.classId,
     date: data.date,
@@ -228,7 +244,6 @@ export async function createEvaluationAction(input: unknown): Promise<Evaluation
     endTime: data.endTime || null,
   });
 
-  const supabase = createClient();
   const { data: created, error } = await supabase
     .from("evaluations")
     .insert({

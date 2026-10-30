@@ -30,6 +30,7 @@ import { addDaysYmd, formatYmdLong } from "@/lib/schedule/dates";
 import type { SessionException, SessionRecurrence } from "@/lib/schedule/occurrences";
 import type { EvaluationType } from "@/types/database.types";
 import { EVALUATION_TYPES } from "@/lib/validation/schemas";
+import { toast } from "@/lib/toast";
 
 export type EvaluationActionResult =
   | { success: true; id?: string; notified?: number; warnings?: string[] }
@@ -129,6 +130,7 @@ export function EvaluationsView({
       setEditLoading(false);
       if ("error" in res) {
         setNotice({ text: res.error, warnings: [] });
+        toast.error(res.error);
         return;
       }
       setEditExtra({ description: res.description, chapters: res.chapters });
@@ -146,16 +148,21 @@ export function EvaluationsView({
         : !editing && onCreate
           ? await onCreate(values)
           : { error: "Action non disponible." };
-    if ("error" in res) return { error: res.error };
+    if ("error" in res) {
+      toast.error(res.error);
+      return { error: res.error };
+    }
     const warnings = res.warnings ?? [];
+    const successMsg = editing
+      ? "Évaluation mise à jour."
+      : values.publish
+        ? "Évaluation créée et publiée. La classe a été notifiée."
+        : "Brouillon enregistré. Il est visible uniquement par les délégués et l'administration.";
     setNotice({
-      text: editing
-        ? "Évaluation mise à jour."
-        : values.publish
-          ? "Évaluation créée et publiée. La classe a été notifiée."
-          : "Brouillon enregistré. Il est visible uniquement par les délégués et l'administration.",
+      text: successMsg,
       warnings,
     });
+    toast.success(successMsg);
     return {};
   };
 

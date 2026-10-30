@@ -24,7 +24,12 @@ export async function createClassAction(formData: FormData) {
     level: parsed.data.level,
     academic_year: parsed.data.academicYear,
   });
-  if (error) return { error: error.message };
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "Une classe portant ce nom existe déjà pour cette année académique." };
+    }
+    return { error: error.message };
+  }
 
   revalidatePath("/dashboard/admin");
   return { success: true };
@@ -68,7 +73,12 @@ export async function createSubjectAction(formData: FormData) {
     code: parsed.data.code ?? null,
     color_key: colorKey,
   });
-  if (error) return { error: error.message };
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "Une matière portant ce nom existe déjà dans cette classe." };
+    }
+    return { error: error.message };
+  }
 
   revalidatePath("/dashboard/admin");
   revalidatePath("/dashboard/schedule");

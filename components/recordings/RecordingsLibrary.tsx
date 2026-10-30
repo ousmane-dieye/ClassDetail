@@ -189,6 +189,7 @@ export function RecordingsLibrary({
                       resourceId={r.id}
                       resourceName={r.title}
                       resourceLabel="cet enregistrement"
+                      successMessage="Cours retiré de votre bibliothèque."
                       buttonTitle="Supprimer la vidéo"
                       className="h-8 w-8"
                       iconSize={14}

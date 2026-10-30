@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Card, CardContent } from "@/components/ui/Card";
 import { changePasswordInDashboardAction } from "@/actions/profile";
 import { logoutAction } from "@/actions/auth";
+import { toast } from "@/lib/toast";
 
 /* ──────────────────────────────────────────────────────────────────
    Types
@@ -126,8 +127,10 @@ export function AccountSection({ account }: { account: AccountData }) {
       const result = await changePasswordInDashboardAction(formData);
       if ("error" in result) {
         setPasswordError(result.error);
+        toast.error(result.error);
       } else {
         setPasswordSuccess(true);
+        toast.success("Votre mot de passe a été modifié avec succès.");
         setPassword("");
         setConfirmPassword("");
       }

@@ -31,6 +31,7 @@ import { DayAgenda, DayStrip } from "@/components/schedule/DayAgenda";
 import { SessionDetailDialog, type ExceptionMode } from "@/components/schedule/SessionDetailDialog";
 import { SessionFormDialog, type SessionFormValues } from "@/components/schedule/SessionFormDialog";
 import { getSubjectColor } from "@/lib/constants/subjectColors";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 /**
@@ -158,14 +159,27 @@ export function ScheduleView({
   };
 
   const handleSubmitForm = async (values: SessionFormValues): Promise<{ error?: string }> => {
+    const isEdit = Boolean(editingSession);
     const res: ScheduleActionResult =
       editingSession && onUpdate
         ? await onUpdate(editingSession.id, values)
         : !editingSession && onCreate
           ? await onCreate(values)
           : { error: "Action non disponible." };
-    // Seule l'erreur intéresse le dialogue ; le succès referme simplement.
-    return "error" in res ? { error: res.error } : {};
+
+    if ("error" in res) {
+      toast.error(res.error);
+      return { error: res.error };
+    }
+
+    toast.success(
+      isEdit
+        ? "Séance d'emploi du temps mise à jour avec succès."
+        : values.publish
+          ? "Séance créée et publiée avec succès."
+          : "Brouillon de séance enregistré."
+    );
+    return {};
   };
 
   const handleException = (
@@ -178,9 +192,17 @@ export function ScheduleView({
       const res = await onException(detailOccurrence.sessionId, detailOccurrence.date, mode, values);
       if (res && "error" in res && res.error) {
         setExceptionError(res.error);
+        toast.error(res.error);
       } else {
         setExceptionError(null);
         setDetailOccurrence(null);
+        toast.success(
+          mode === "cancel"
+            ? "Séance annulée pour cette date."
+            : mode === "move"
+              ? "Séance déplacée avec succès."
+              : "Salle modifiée pour cette séance."
+        );
       }
     });
   };

@@ -13,6 +13,10 @@ import { Textarea } from "@/components/ui/Textarea";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CS_IMAGES } from "@/lib/constants/images";
 
+import { CreateTaskForm } from "@/components/tasks/CreateTaskForm";
+import { EditTaskForm } from "@/components/tasks/EditTaskForm";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
+
 const TASK_TYPES = ["EXERCISE", "TP", "ASSIGNMENT", "RESEARCH", "PROJECT", "OTHER"];
 
 function toDateTimeLocal(date: string): string {
@@ -107,36 +111,7 @@ export default async function TasksPage() {
                   <span>Nouvelle tâche de classe</span>
                 </div>
 
-                <form action={async (fd) => { "use server"; await createTaskAction(fd); }} className="grid gap-4 md:grid-cols-2">
-                  <input type="hidden" name="classId" value={profile!.class_id!} />
-                  <Input name="title" placeholder="Titre de la tâche (ex: TP 02 TCP/IP)" required />
-                  
-                  <Select name="subjectId" required defaultValue="">
-                    <option value="">Sélectionner une matière</option>
-                    {(subjects ?? []).map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </Select>
-
-                  <Select name="type" required defaultValue="">
-                    <option value="">Sélectionner le type (ex: Exercice, TP...)</option>
-                    {TASK_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t === "EXERCISE" ? "Exercice" : t === "TP" ? "TP" : t === "ASSIGNMENT" ? "Devoir" : t === "RESEARCH" ? "Recherche" : t === "PROJECT" ? "Projet" : "Autre"}
-                      </option>
-                    ))}
-                  </Select>
-
-
-                  <Input name="dueDate" type="datetime-local" required />
-                  <Input name="attachmentLink" placeholder="Lien de la ressource (optionnel : Google Drive, OneDrive, GitHub...)" className="md:col-span-2" />
-                  <Textarea name="description" placeholder="Consignes et détails de la tâche..." className="md:col-span-2" />
-
-                  <Button type="submit" className="md:col-span-2 gap-2 h-11 text-base">
-                    <Plus size={18} />
-                    <span>Publier la tâche</span>
-                  </Button>
-                </form>
+                <CreateTaskForm classId={profile!.class_id!} subjects={subjects ?? []} />
               </CardContent>
             </Card>
           </div>
@@ -167,35 +142,20 @@ export default async function TasksPage() {
                           <span>Modifier</span>
                         </summary>
                         <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-lift">
-                          <form action={async (fd) => { "use server"; await updateTaskAction(fd); }} className="grid gap-3 md:grid-cols-2">
-                            <input type="hidden" name="taskId" value={t.id} />
-                            <input type="hidden" name="classId" value={t.class_id} />
-                            <Input name="title" defaultValue={t.title} required />
-                            <Select name="subjectId" required defaultValue={t.subject_id}>
-                              {(subjects ?? []).map((s) => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                            </Select>
-                            <Select name="type" required defaultValue={t.type}>
-                              {TASK_TYPES.map((type) => (
-                                <option key={type} value={type}>{type}</option>
-                              ))}
-                            </Select>
-                            <Input name="dueDate" type="datetime-local" defaultValue={toDateTimeLocal(t.due_date)} required />
-                            <Input name="attachmentLink" defaultValue={t.attachment_link ?? ""} placeholder="Lien de la ressource (Google Drive, OneDrive, GitHub...)" className="md:col-span-2" />
-
-                            <Textarea name="description" defaultValue={t.description ?? ""} placeholder="Description" className="md:col-span-2" />
-                            <Button type="submit" className="md:col-span-2">Enregistrer les modifications</Button>
-                          </form>
+                          <EditTaskForm task={t} subjects={subjects ?? []} />
                         </div>
                       </details>
 
-                      <form action={async () => { "use server"; await deleteTaskAction(t.id); }}>
-                        <Button size="sm" variant="danger" className="gap-1">
-                          <Trash2 size={13} />
-                          <span>Supprimer</span>
-                        </Button>
-                      </form>
+                      <ConfirmDeleteButton
+                        action={deleteTaskAction}
+                        resourceId={t.id}
+                        resourceName={t.title}
+                        resourceLabel="cette tâche"
+                        successMessage="Tâche supprimée avec succès."
+                        buttonTitle="Supprimer la tâche"
+                        className="h-8 w-8"
+                        iconSize={13}
+                      />
                     </div>
 
                     <details className="group">

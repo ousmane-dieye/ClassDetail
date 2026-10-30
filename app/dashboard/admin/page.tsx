@@ -18,6 +18,9 @@ import {
   type StudentItem,
   type ClassOption,
 } from "@/components/admin/StudentsManagementSection";
+import { CreateClassForm } from "@/components/admin/CreateClassForm";
+import { CreateSubjectForm } from "@/components/admin/CreateSubjectForm";
+import { PendingRequestDecisionButtons } from "@/components/admin/PendingRequestDecisionButtons";
 import Link from "next/link";
 import {
   Shield,
@@ -247,20 +250,11 @@ export default async function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 sm:shrink-0">
-                    <form action={async () => { "use server"; await decideRegistrationAction(r.id, "ACCEPTED"); }}>
-                      <Button size="sm" variant="success" className="gap-1.5">
-                        <Check size={13} />
-                        <span>Accepter</span>
-                      </Button>
-                    </form>
-                    <form action={async () => { "use server"; await decideRegistrationAction(r.id, "REJECTED"); }}>
-                      <Button size="sm" variant="danger" className="gap-1.5">
-                        <X size={13} />
-                        <span>Refuser</span>
-                      </Button>
-                    </form>
-                  </div>
+
+                  <PendingRequestDecisionButtons
+                    requestId={r.id}
+                    studentName={`${r.profiles?.first_name ?? ""} ${r.profiles?.last_name ?? ""}`.trim() || "cet étudiant"}
+                  />
                 </CardContent>
               </Card>
             ))
@@ -290,18 +284,7 @@ export default async function AdminDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-5 pb-5 space-y-3">
-              <form
-                action={async (fd) => { "use server"; await createClassAction(fd); }}
-                className="space-y-3"
-              >
-                <Input name="name" placeholder="Nom (ex: GL2-A)" required />
-                <Input name="level" placeholder="Niveau (ex: Licence 2)" required />
-                <Input name="academicYear" placeholder="Année (ex: 2026-2027)" required />
-                <Button type="submit" className="w-full gap-1.5">
-                  <Plus size={15} />
-                  <span>Créer la classe</span>
-                </Button>
-              </form>
+              <CreateClassForm />
 
               {(classes ?? []).length > 0 && (
                 <div className="mt-4 space-y-2 border-t border-border/70 pt-4">
@@ -322,6 +305,7 @@ export default async function AdminDashboard() {
                         resourceId={c.id}
                         resourceName={c.name}
                         resourceLabel="cette classe"
+                        successMessage="Classe supprimée avec succès."
                         buttonTitle="Supprimer la classe"
                         className="h-7 w-7"
                         iconSize={13}
@@ -351,44 +335,7 @@ export default async function AdminDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-5 pb-5 space-y-3">
-              <form
-                action={async (fd) => { "use server"; await createSubjectAction(fd); }}
-                className="space-y-3"
-              >
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Classe concernée</label>
-                  <Select name="classId" required defaultValue="">
-                    <option value="">Sélectionner une classe</option>
-                    {(classes ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} — {c.level}
-                      </option>
-                    ))}
-                  </Select>
-
-                </div>
-                <Input
-                  name="name"
-                  placeholder="Nom de la matière (ex: Algorithmique)"
-                  required
-                />
-                <Input name="code" placeholder="Code optionnel (ex: CS201)" />
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Couleur distinctive (optionnelle)</label>
-                  <Select name="colorKey" defaultValue="">
-                    <option value="">Automatique (harmonieuse sans doublon)</option>
-                    {SUBJECT_COLOR_KEYS.map((k) => (
-                      <option key={k} value={k}>
-                        {getSubjectColor(k).label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <Button type="submit" className="w-full gap-1.5">
-                  <Plus size={15} />
-                  <span>Ajouter la matière</span>
-                </Button>
-              </form>
+              <CreateSubjectForm classes={classes ?? []} />
             </CardContent>
           </Card>
         </section>

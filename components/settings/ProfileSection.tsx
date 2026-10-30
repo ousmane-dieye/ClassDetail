@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 import { updateProfileAction } from "@/actions/profile";
+import { toast } from "@/lib/toast";
 import type { UserRole, RegistrationStatus } from "@/types/database.types";
 
 /* ──────────────────────────────────────────────────────────────────
@@ -183,6 +184,7 @@ function EditProfileForm({
       const result = await updateProfileAction(fd);
       if ("error" in result) {
         setError(result.error);
+        toast.error(result.error);
       } else {
         onSuccess();
       }
@@ -266,6 +268,7 @@ function EditProfileForm({
           variant="default"
           disabled={!isDirty || isPending}
           isLoading={isPending}
+          loadingText="Enregistrement…"
           className="gap-2"
         >
           {!isPending && <Check size={15} />}
@@ -292,6 +295,7 @@ export function ProfileSection({ profile }: { profile: ProfileData }) {
   function handleSuccess() {
     setEditing(false);
     setResult({ success: true });
+    toast.success("Modifications enregistrées.");
     setLocalName({
       first: (document.getElementById("profile-firstName") as HTMLInputElement | null)?.value ?? localName.first,
       last: (document.getElementById("profile-lastName") as HTMLInputElement | null)?.value ?? localName.last,

@@ -80,12 +80,28 @@ function getDueInfo(dueDateStr: string, isCompleted: boolean) {
   }
 }
 
+import { toast } from "@/lib/toast";
+
 export function TaskCard({ task, completed }: { task: TaskItem; completed: boolean }) {
   const [isPending, startTransition] = useTransition();
 
   function handleToggle() {
+    if (isPending) return;
     startTransition(async () => {
-      await toggleTaskCompletionAction(task.id, !completed);
+      try {
+        const res = await toggleTaskCompletionAction(task.id, !completed);
+        if (res && "error" in res && res.error) {
+          toast.error(res.error);
+        } else {
+          toast.success(
+            completed
+              ? "Tâche marquée comme à faire."
+              : "Tâche marquée comme terminée."
+          );
+        }
+      } catch {
+        toast.error("Une erreur est survenue lors de la mise à jour de la tâche.");
+      }
     });
   }
 

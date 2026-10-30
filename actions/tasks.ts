@@ -26,6 +26,22 @@ export async function createTaskAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
+  const dueDateIso = parsed.data.dueDate.toISOString();
+
+  // Anti-doublon : vérifie si un devoir identique a déjà été créé
+  const { data: existing } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("class_id", parsed.data.classId)
+    .eq("subject_id", parsed.data.subjectId)
+    .eq("title", parsed.data.title)
+    .eq("due_date", dueDateIso)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: "Un devoir identique existe déjà pour cette matière et cette date." };
+  }
+
   // Autorisation vérifiée réellement par RLS (ADMIN ou DELEGATE de la classe).
   const { data: created, error } = await supabase
     .from("tasks")
@@ -36,7 +52,7 @@ export async function createTaskAction(formData: FormData) {
       title: parsed.data.title,
       description: parsed.data.description ?? null,
       type: parsed.data.type,
-      due_date: parsed.data.dueDate.toISOString(),
+      due_date: dueDateIso,
       attachment_link: parsed.data.attachmentLink || null,
     })
     .select("id, class_id")

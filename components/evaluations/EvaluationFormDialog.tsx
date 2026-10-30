@@ -480,7 +480,7 @@ export function EvaluationFormDialog({
             <Button ref={cancelRef} type="button" variant="outline" onClick={onClose} disabled={pending}>
               Annuler
             </Button>
-            <Button type="submit" isLoading={pending}>
+            <Button type="submit" isLoading={pending} loadingText="Enregistrement…">
               {isEdit ? "Enregistrer" : publish ? "Créer et publier" : "Enregistrer le brouillon"}
             </Button>
           </div>

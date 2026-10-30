@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { EvaluationFormDialog, type EvaluationFormValues } from "@/components/evaluations/EvaluationFormDialog";
 import { EvaluationResourcesDialog } from "@/components/evaluations/EvaluationResourcesDialog";
+import { toast } from "@/lib/toast";
 import type { ClassResourceDocument, ClassResourceHint } from "@/lib/evaluations/queries";
 import type { EvaluationView } from "@/lib/evaluations/constants";
 import type { SessionException, SessionRecurrence } from "@/lib/schedule/occurrences";
@@ -125,9 +126,11 @@ export function EvaluationManagerPanel({
   const showFeedback = (res: ManagerActionResult, successText: string) => {
     if ("error" in res) {
       setFeedback({ kind: "error", text: res.error });
+      toast.error(res.error);
       return false;
     }
     setFeedback({ kind: "success", text: successText, warnings: res.warnings ?? [] });
+    toast.success(successText);
     return true;
   };
 

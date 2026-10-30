@@ -22,13 +22,27 @@ export async function createRecordingAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
+  const sessionDate = parsed.data.date.toISOString().slice(0, 10);
+
+  // Protection anti-doublon : vérifie l'existence préalable du lien ou de la séance
+  const { data: existing } = await supabase
+    .from("recordings")
+    .select("id")
+    .eq("class_id", parsed.data.classId)
+    .or(`drive_url.eq."${parsed.data.driveUrl}",and(title.eq."${parsed.data.title}",date.eq."${sessionDate}")`)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: "Ce cours enregistré existe déjà dans votre bibliothèque." };
+  }
+
   const { data: created, error } = await supabase
     .from("recordings")
     .insert({
       class_id: parsed.data.classId,
       subject_id: parsed.data.subjectId,
       title: parsed.data.title,
-      date: parsed.data.date.toISOString().slice(0, 10),
+      date: sessionDate,
       description: parsed.data.description ?? null,
       drive_url: parsed.data.driveUrl,
       creator_id: user.id,

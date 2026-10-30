@@ -23,6 +23,7 @@ import {
   leaveClassAction,
   requestClassTransferAction,
 } from "@/actions/membership";
+import { toast } from "@/lib/toast";
 import {
   registrationStatusLabel,
   type ClassOption,
@@ -701,14 +702,17 @@ export function MyClassSection({ view }: { view: MembershipView }) {
     setPending(false);
     if ("error" in res) {
       setDialogError(res.error);
+      toast.error(res.error);
       return;
     }
     setDialog(null);
+    const msg =
+      "Vous avez quitté la classe. Vos anciennes données restent conservées mais vous n'y avez plus accès. Vous pouvez demander à rejoindre une autre classe.";
     setNotice({
       tone: "success",
-      message:
-        "Vous avez quitté la classe. Vos anciennes données restent conservées mais vous n'y avez plus accès. Vous pouvez demander à rejoindre une autre classe.",
+      message: msg,
     });
+    toast.success("Vous avez quitté la classe avec succès.");
     setTargetClassId("");
     router.refresh();
   };
@@ -719,6 +723,7 @@ export function MyClassSection({ view }: { view: MembershipView }) {
       const message = "Veuillez sélectionner une classe.";
       if (dialog) setDialogError(message);
       else setActionError(message);
+      toast.error(message);
       return;
     }
     setPending(true);
@@ -731,15 +736,18 @@ export function MyClassSection({ view }: { view: MembershipView }) {
     if ("error" in res) {
       if (dialog) setDialogError(res.error);
       else setActionError(res.error);
+      toast.error(res.error);
       return;
     }
     setDialog(null);
+    const msg = isJoinRequest
+      ? "Votre demande a bien été enregistrée. Un administrateur ou le délégué de la classe choisie devra la valider."
+      : "Votre demande de changement de classe a bien été enregistrée. Vous conservez votre classe actuelle jusqu'à sa validation.";
     setNotice({
       tone: "success",
-      message: isJoinRequest
-        ? "Votre demande a bien été enregistrée. Un administrateur ou le délégué de la classe choisie devra la valider."
-        : "Votre demande de changement de classe a bien été enregistrée. Vous conservez votre classe actuelle jusqu'à sa validation.",
+      message: msg,
     });
+    toast.success(isJoinRequest ? "Demande d'adhésion envoyée." : "Demande de changement de classe envoyée.");
     setTargetClassId("");
     router.refresh();
   };
@@ -752,10 +760,12 @@ export function MyClassSection({ view }: { view: MembershipView }) {
     setPending(false);
     if ("error" in res) {
       setDialogError(res.error);
+      toast.error(res.error);
       return;
     }
     setDialog(null);
     setNotice({ tone: "success", message: "Votre demande a été annulée." });
+    toast.success("Votre demande a été annulée avec succès.");
     router.refresh();
   };
 

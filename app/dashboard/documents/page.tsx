@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CS_IMAGES } from "@/lib/constants/images";
 
+import { CreateDocumentForm } from "@/components/documents/CreateDocumentForm";
+
 export default async function DocumentsPage() {
   const supabase = createClient();
   const {
@@ -67,24 +69,7 @@ export default async function DocumentsPage() {
                 <span>Nouveau document</span>
               </div>
 
-              <form action={async (fd) => { "use server"; await createDocumentAction(fd); }} className="grid gap-4 md:grid-cols-2">
-                <input type="hidden" name="classId" value={profile!.class_id!} />
-                <Input name="title" placeholder="Titre du document (ex: Polycopié Chapitre 3 - TCP/IP)" required />
-
-                <Select name="subjectId" required defaultValue="">
-                  <option value="">Sélectionner une matière</option>
-                  {(subjects ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </Select>
-
-
-                <Input name="driveUrl" placeholder="Lien Google Drive du fichier" required className="md:col-span-2" />
-                <Textarea name="description" placeholder="Description courte (optionnel)" className="md:col-span-2" />
-
-                <Button type="submit" className="md:col-span-2 gap-2 h-11 text-base">
-                  <Plus size={18} />
-                  <span>Ajouter le document</span>
-                </Button>
-              </form>
+              <CreateDocumentForm classId={profile!.class_id!} subjects={subjects ?? []} />
             </CardContent>
           </Card>
         </div>
@@ -140,6 +125,7 @@ export default async function DocumentsPage() {
                         resourceId={d.id}
                         resourceName={d.title}
                         resourceLabel="ce document"
+                        successMessage="Document supprimé avec succès."
                         buttonTitle="Supprimer le document"
                         className="h-8 w-8"
                         iconSize={14}

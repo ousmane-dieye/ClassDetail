@@ -28,6 +28,7 @@ import {
   resetNotificationPreferencesAction,
   saveNotificationPreferencesAction,
 } from "@/actions/notification-preferences";
+import { toast } from "@/lib/toast";
 
 type PreferenceState = Record<PreferenceCategory, Channels>;
 
@@ -104,10 +105,13 @@ export function NotificationPreferencesForm({ initial }: { initial: PreferenceSt
         setSaved(values); // la persistance a réellement réussi
         setStatus("success");
         setMessage("Vos préférences ont été enregistrées.");
+        toast.success("Vos préférences de notification ont été enregistrées.");
       } else {
         // Les valeurs saisies sont conservées : l'utilisateur peut réessayer.
+        const err = "error" in result ? result.error : "Enregistrement impossible.";
         setStatus("error");
-        setMessage("error" in result ? result.error : "Enregistrement impossible.");
+        setMessage(err);
+        toast.error(err);
       }
     });
   }
@@ -126,9 +130,12 @@ export function NotificationPreferencesForm({ initial }: { initial: PreferenceSt
         setSaved(next);
         setStatus("success");
         setMessage("Les paramètres par défaut ont été rétablis.");
+        toast.success("Paramètres de notifications rétablis par défaut.");
       } else {
+        const err = "error" in result ? result.error : "Réinitialisation impossible.";
         setStatus("error");
-        setMessage("error" in result ? result.error : "Réinitialisation impossible.");
+        setMessage(err);
+        toast.error(err);
       }
     });
   }

@@ -22,6 +22,18 @@ export async function createDocumentAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Non authentifié" };
 
+  // Anti-doublon : vérifie si le fichier a déjà été partagé dans la classe
+  const { data: existing } = await supabase
+    .from("documents")
+    .select("id")
+    .eq("class_id", parsed.data.classId)
+    .eq("drive_url", parsed.data.driveUrl)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: "Ce document existe déjà dans la bibliothèque de la classe." };
+  }
+
   const { data: created, error } = await supabase
     .from("documents")
     .insert({
