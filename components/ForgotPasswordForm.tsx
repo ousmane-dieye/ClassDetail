@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { requestPasswordResetAction } from "@/actions/auth";
 import { SITE } from "@/lib/constants/images";
-import { GraduationCap, ArrowLeft, Mail, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Mail, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -33,8 +33,8 @@ export function ForgotPasswordForm() {
       {/* Marque & accroche */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-subtle">
-            <GraduationCap size={22} />
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-border bg-white shadow-subtle">
+            <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
           </div>
           <div>
             <p className="font-display text-xl font-bold tracking-tight text-foreground">{SITE.name}</p>

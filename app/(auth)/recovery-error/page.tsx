@@ -1,7 +1,7 @@
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { CS_IMAGES, SITE } from "@/lib/constants/images";
 import Link from "next/link";
-import { ArrowLeft, GraduationCap, AlertTriangle } from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 
 export default function RecoveryErrorPage() {
   return (
@@ -19,8 +19,8 @@ export default function RecoveryErrorPage() {
 
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 backdrop-blur-sm">
-              <GraduationCap size={19} strokeWidth={2} />
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-white/25">
+              <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
             </div>
             <span className="font-display text-base font-bold tracking-tight">{SITE.name}</span>
           </div>

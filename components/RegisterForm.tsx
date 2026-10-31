@@ -5,7 +5,7 @@ import Link from "next/link";
 import { registerAction } from "@/actions/auth";
 import { SITE } from "@/lib/constants/images";
 import { PASSWORD_MIN_LENGTH } from "@/lib/constants/password";
-import { GraduationCap, ArrowRight, Lock, Mail, User, BookOpen, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Lock, Mail, User, BookOpen, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -37,8 +37,8 @@ export function RegisterForm({ classes }: { classes: ClassOption[] }) {
       {/* Marque & accroche */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-subtle">
-            <GraduationCap size={22} />
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-border bg-white shadow-subtle">
+            <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
           </div>
           <div>
             <p className="font-display text-xl font-bold tracking-tight text-foreground">{SITE.name}</p>

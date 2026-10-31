@@ -18,7 +18,6 @@ import {
   BarChart3,
   Shield,
   LogOut,
-  GraduationCap,
   Sparkles,
   ChevronRight,
   PanelLeftClose,
@@ -227,8 +226,8 @@ function SidebarContent({
       {collapsed ? (
         /* Mode réduit : logo centré, toggle juste en dessous */
         <div className="mb-7 flex flex-col items-center gap-2">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-subtle">
-            <GraduationCap size={20} strokeWidth={2} />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white shadow-subtle">
+            <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
           </div>
 
           {showToggle && (
@@ -251,8 +250,8 @@ function SidebarContent({
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-subtle">
-              <GraduationCap size={20} strokeWidth={2} />
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white shadow-subtle">
+              <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
             </div>
 
             <div className="min-w-0">

@@ -6,7 +6,7 @@ import { SidebarProvider } from "@/components/SidebarContext";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssistantFab } from "@/components/assistant/AssistantFab";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { Search, GraduationCap } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -122,7 +122,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {/* Pied de page (desktop) */}
           <footer className="hidden border-t border-border/50 px-8 py-3 items-center justify-between md:flex">
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <GraduationCap size={11} />
+              <img src="/logo-mark.png" alt="" className="h-3.5 w-3.5 rounded-[3px] border border-border/60" />
               <span>ClassPulse — Plateforme académique EdTech</span>
             </div>
             <span className="text-[11px] text-muted-foreground">© {new Date().getFullYear()}</span>

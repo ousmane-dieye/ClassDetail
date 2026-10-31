@@ -28,8 +28,8 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-subtle transition-transform duration-200 group-hover:scale-105">
-              <GraduationCap size={20} strokeWidth={2} />
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-border bg-white shadow-subtle transition-transform duration-200 group-hover:scale-105">
+              <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
             </div>
             <div className="flex items-baseline gap-1.5">
               <span className="font-display text-lg font-bold tracking-tight text-foreground">
@@ -320,8 +320,8 @@ export default function HomePage() {
       <section className="py-16 sm:py-20">
         <div className="mx-auto max-w-4xl px-4 sm:px-6">
           <div className="brand-card relative overflow-hidden rounded-3xl p-8 text-center shadow-lift sm:p-14">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-subtle">
-              <GraduationCap size={24} strokeWidth={1.75} />
+            <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-border bg-white shadow-subtle">
+              <img src="/logo-mark.png" alt="ClassPulse" className="h-full w-full object-contain" />
             </div>
             <h2 className="mt-5 font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               {SITE.tagline}
@@ -354,8 +354,8 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <GraduationCap size={17} />
+              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl border border-border bg-white">
+                <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
               </div>
               <span className="font-display text-sm font-bold text-foreground">ClassPulse</span>
             </div>

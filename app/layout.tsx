@@ -23,8 +23,9 @@ export const metadata: Metadata = {
     title: "ClassPulse",
     description: "La plateforme académique des classes d'informatique.",
     type: "website",
+    images: ["/logo.png"],
   },
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: "/logo-mark.png", apple: "/logo-mark.png" },
 };
 
 import { ToastContainer } from "@/components/ui/ToastContainer";

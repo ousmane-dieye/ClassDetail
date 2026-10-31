@@ -19,7 +19,6 @@ import {
   Sparkles,
   LogOut,
   X,
-  GraduationCap,
   Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -152,8 +151,8 @@ function MoreSheet({
         {/* En-tête */}
         <div className="flex items-center justify-between gap-3 border-b border-border/70 px-5 pb-3 pt-2.5">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-subtle">
-              <GraduationCap size={18} strokeWidth={2} />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white shadow-subtle">
+              <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0">
               <p className="font-display text-base font-bold tracking-tight">Plus</p>
