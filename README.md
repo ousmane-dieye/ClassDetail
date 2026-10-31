@@ -60,7 +60,7 @@ L'application n'est pas destinée aux enseignants : elle est pensée pour les é
 - **Centre de notifications unifié** : compteur temps réel, filtres par catégorie, marquage lu/tout lu, regroupement par date, navigation vers l'élément.
 - **Emploi du temps** : calendrier hebdomadaire sur desktop, agenda journalier sur mobile, séances récurrentes avec exceptions ponctuelles datées, couleur stable par matière, publication contrôlée par les délégués, notifications de publication et d'annulation.
 - **Évaluations** : CC, devoirs surveillés, examens, rattrapages, TP… créés par les délégués/admins en brouillon ou publiés directement, **chapitres concernés et ressources de révision toujours facultatifs**, annulation tracée avec motif, report daté, avertissements de conflit (non bloquants) avec les autres évaluations et avec les cours.
-- **Assistant IA contextuel** : répond avec les vraies données de la plateforme (RBAC respecté), propose des actions de navigation validées par une liste blanche, streaming de la réponse.
+- **Assistant IA contextuel** : répond avec les vraies données de la plateforme (RBAC respecté), recherche de ressources (documents, hints & sujets, cours enregistrés) avec liens cliquables, propose des actions de navigation validées par une liste blanche, streaming de la réponse.
 - **Statistiques** calculées en direct depuis PostgreSQL (aucune donnée fictive/hardcodée) : par classe pour les délégués, globales + par classe pour les admins.
 - **Sécurité par Row Level Security** : chaque règle métier (isolation par classe, permissions par rôle) est appliquée au niveau PostgreSQL, pas seulement côté frontend.
 
@@ -230,7 +230,8 @@ Bouton flottant ✨ accessible sur tout le tableau de bord (`/dashboard`). Panne
 - **Contexte** : prénom, rôle, classe, date/heure actuelles injectés dans le prompt système.
 - **RBAC strict** : les outils utilisent le client Supabase **de l'utilisateur** (cookies de session), jamais le service role → un étudiant ne peut jamais lire les données d'un autre, même en interrogeant l'IA.
 - **Dégradable** : sans `OPENAI_API_KEY`, l'assistant répond avec un message explicatif + actions de navigation (jamais de crash).
-- L'IA ne peut jamais inventer d'URL : les actions passent par `sanitizeAssistantActions` + liste blanche (`/dashboard…`).
+- **Liens vérifiés** : les actions passent par `sanitizeAssistantActions` + liste blanche (`/dashboard…`), et chaque lien de ressource de la réponse finale passe par `sanitizeAssistantLinks` (`lib/ai/links.ts`) : seul une URL réellement lue dans un résultat d'outil (ou l'historique) reste cliquable — le libellé est conservé sinon.
+- **Recherche de ressources** : l'étudiant demande un document, un sujet ou un cours enregistré dans la conversation (`« donne-moi les TD de maths »`, `« anciens examens d'algorithmique »`, `« retrouve le cours Java que j'avais enregistré »`) et reçoit des résultats réels avec titre cliquable (fichier) + lien vers le module interne (`lib/ai/resourceSearch.ts`).
 
 ## Outils IA
 
@@ -244,8 +245,13 @@ Bouton flottant ✨ accessible sur tout le tableau de bord (`/dashboard`). Panne
 - `getMySchedule` — emploi du temps d'un jour. Le jour demandé (« lundi », « mardi »… ou numéro ISO 1-7) est transcrit dans le paramètre `weekday` et **converti en date par le serveur** (prochaine occurrence selon la pendule de l'app) : le modèle IA ne calcule jamais de date lui-même (correction d'un bug où « lundi » renvoyait une date fausse). Annulations et créneaux modifiés via exceptions datées ; séances publiées uniquement.
 - `getMyEvaluations` — évaluations à venir (type, date, heures, salle, chapitres si renseignés, signalement « reportée ») ; brouillons jamais exposés, annulées conservées.
 - `getMyNotifications` — dernières notifications (lu/non lu).
-- `searchPlatform` — recherche dans les ressources (limitée à la classe via RLS).
+- `searchDocuments` — recherche dans le module **Documents** (titre, matière, description) : renvoie titre cliquable (fichier réel) + lien vers `/dashboard/documents`.
+- `searchHints` — recherche dans **Hints & Sujets** (sujets d'examen, devoirs, annales, corrigés) : type (`hint_type` traduit), promotion, lien réel + `/dashboard/hints`.
+- `searchRecordings` — recherche dans **Cours enregistrés** (bibliothèque de la classe) : date de séance, lien réel + `/dashboard/recordings`.
+- `searchPlatform` — recherche transverse sur les 3 catégories ci-dessus (quand la catégorie est incertaine).
 - `suggestActions` — boutons de navigation (liste blanche uniquement).
+
+Recherche (`lib/ai/resourceSearch.ts`) : classement déterministe (score → date → id), insensible à la casse et aux accents, tolérance de racine partagée avec l'UI (`sharesRoot`), dédoublonnage, **5 résultats maximum** ; à défaut de correspondance stricte, des « alternatives proches » sont retournées et présentées comme telles. Aucun identifiant n'est accepté en entrée : la lecture est toujours `class_id` de l'utilisateur + RLS `is_member_of(class_id)`.
 
 ## Prérequis
 
@@ -506,7 +512,7 @@ Déploiement Vercel : poussez sur un dépôt, importez sur [vercel.com](https://
 - **Emails** : expéditeur admin, anti-doublon, statut FAILED sans mot de passe, OpenAI down → email envoyé (`tests/emailService.test.ts`).
 - **Rappels** : J-3/J-1, devoir rendu, sélection (`tests/reminders.test.ts`).
 - **Notifications** : catégorisation des types (dont les 3 types `schedule` et les 3 types `evaluations`), insertion, notification de classe avec exclusion (`tests/notifications.test.ts`).
-- **Assistant** : liste blanche des liens, sanitisation des actions (`tests/assistantTools.test.ts`).
+- **Assistant** : liste blanche des liens, sanitisation des actions (`tests/assistantTools.test.ts`), recherche de ressources (titres/matières, périmètre de classe, aucune/non pertinentes, 5 max, URL réelles) (`tests/assistantResourceSearch.test.ts`), garde-fou des liens de réponse (`tests/assistantLinks.test.ts`), boucle d'outils + réponses inchangées (`tests/assistantReply.test.ts`), rendu markdown des liens (`tests/assistantMarkdown.test.tsx`).
 - **Permissions** : matrice RBAC complète (`tests/permissions.test.ts`).
 - **Emploi du temps** : palette de couleurs synchronisée avec le CHECK SQL, dates/fuseau Africa/Dakar, détection de conflits, expansion récurrent + exceptions (annulation, déplacement, salle, matière), prochain cours, layout anti-chevauchement, matrice STUDENT/DELEGATE/ADMIN (`tests/schedule-*.test.ts`).
 - **Évaluations** : chapitres facultatifs (8 tests dédiés), horaires facultatifs, ressources facultatives, conflits non bloquants (évaluation/évaluation, évaluation/cours), listing/tri/groupement/filtres, matrice STUDENT/DELEGATE/ADMIN des Server Actions (brouillon jamais notifié, édition de détail jamais notifiée, annulation tracée), garanties SQL de la migration 0017 (`tests/evaluations-*.test.ts`).

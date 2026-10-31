@@ -154,8 +154,10 @@ export function recordingSearchText(recording: RecordingListItem): string {
  *  « complexité ». En deçà, seule la sous-chaîne exacte compte. */
 const MIN_ROOT = 8;
 
-/** Vrai si le mot et le mot-clé partagent une racine significative. */
-function sharesRoot(word: string, token: string): boolean {
+/** Vrai si le mot et le mot-clé partagent une racine significative.
+ *  Exporté : réutilisé par la recherche de ressources de l'assistant
+ *  (lib/ai/resourceSearch.ts) pour garantir le même comportement que l'UI. */
+export function sharesRoot(word: string, token: string): boolean {
   if (word.length < MIN_ROOT || token.length < MIN_ROOT) return false;
   const max = Math.min(word.length, token.length);
   let i = 0;

@@ -6,7 +6,10 @@
  *    Les policies RLS s'appliquent donc à chaque requête : un étudiant ne peut
  *    jamais lire les données privées d'un autre utilisateur, même en interrogeant
  *    l'assistant. Le service role n'est JAMAIS utilisé ici.
- *  - searchPlatform est limité à la classe de l'utilisateur (via RLS + filtre class_id).
+ *  - searchDocuments / searchHints / searchRecordings / searchPlatform sont
+ *    limités à la classe de l'utilisateur (RLS + filtre class_id) et ne
+ *    demandent jamais d'identifiant de ressource : uniquement des termes de
+ *    recherche (voir lib/ai/resourceSearch.ts).
  *  - suggestActions ne produit que des liens internes validés par une liste blanche.
  *
  * Le module est "server only" (il utilise le client serveur via le paramètre passé).
@@ -15,6 +18,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, NotificationRow } from "@/types/database.types";
 import { isoDateRegex } from "@/lib/validation/schemas";
+import { searchResources, formatResourceResults, type ResourceCategory } from "@/lib/ai/resourceSearch";
 import { getZonedNow, formatYmdLong, dayLongLabel, isoDayOfWeek, minutesToTime, addDaysYmd, nextWeekdayYmd } from "@/lib/schedule/dates";
 import { expandDay } from "@/lib/schedule/occurrences";
 import { toEvaluationView, EVALUATION_TYPE_LABELS, type EvaluationView } from "@/lib/evaluations/constants";
@@ -124,9 +128,45 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: "searchDocuments",
+    description:
+      "Recherche un document (cours, support pédagogique, PDF, TD, TP, polycopié) dans le module Documents de la classe de l'utilisateur. À utiliser pour « donne-moi les TD de maths », « tu as un cours sur les pointeurs », « quels supports sont disponibles en algorithmique ». Recherche sur titre, matière et description. Renvoie des résultats avec URL réelles : recopie-les telles quelles dans ta réponse.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Termes de recherche : titre, matière ou mots-clés (ex. « TD pointeurs », « algorithmique »)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "searchHints",
+    description:
+      "Recherche dans Hints & Sujets : sujets d'examen, devoirs, annales, corrigés de la classe de l'utilisateur. À utiliser pour « anciens examens d'algorithmique », « un sujet de bases de données », « y a-t-il un corrigé pour le TD de programmation C », « je veux réviser les annales ». Recopie les URL renvoyées telles quelles.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Termes de recherche : titre, matière, type (ex. « examen algorithmique », « corrigé TD C »)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "searchRecordings",
+    description:
+      "Recherche dans les cours enregistrés de la classe de l'utilisateur (bibliothèque « Cours enregistrés »). À utiliser pour « retrouve le cours Java que j'avais enregistré », « mes cours sur les pointeurs », « quels cours enregistrés en algorithmique ». Recopie les URL renvoyées telles quelles.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Termes de recherche : titre, matière ou description (ex. « pointeurs C »)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "searchPlatform",
     description:
-      "Recherche dans les ressources de la plateforme (documents, hints, cours enregistrés, tâches) limitée à la classe de l'utilisateur. À utiliser quand l'utilisateur cherche une ressource précise.",
+      "Recherche TRANSVERSE (documents + hints + cours enregistrés) de la classe de l'utilisateur, uniquement quand la catégorie est incertaine. Préfère searchDocuments / searchHints / searchRecordings qui ciblent une catégorie précise.",
     parameters: {
       type: "object",
       properties: { query: { type: "string", description: "Termes de recherche (titre)" } },
@@ -317,7 +357,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (error) return { ok: false, content: "Erreur lors de la lecture des cours enregistrés." };
       if (!data || data.length === 0) return { ok: true, content: "Aucun cours enregistré disponible dans votre classe." };
       const lines = data.map((r) =>
-        `- ${r.title} — ${subjectName.get(r.subject_id) ?? "Sans matière"} — date ${r.date ? fmtDate(r.date) : "inconnue"}${r.description ? ` — ${r.description}` : ""} — lien : ${r.drive_url}`
+        `- ${r.title} — ${subjectName.get(r.subject_id) ?? "Sans matière"} — date ${r.date ? fmtDate(r.date) : "inconnue"}${r.description ? ` — ${r.description}` : ""} — [Ouvrir le cours](${r.drive_url})`
       );
       return { ok: true, content: `Cours enregistrés (${data.length}) :\n${lines.join("\n")}` };
     }
@@ -334,7 +374,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (error) return { ok: false, content: "Erreur lors de la lecture des documents." };
       if (!data || data.length === 0) return { ok: true, content: "Aucun document partagé dans votre classe." };
       const lines = data.map((d) =>
-        `- ${d.title} — ${subjectName.get(d.subject_id) ?? "Sans matière"} — ajouté le ${fmtDate(d.created_at)}${d.description ? ` — ${d.description}` : ""} — lien : ${d.drive_url}`
+        `- ${d.title} — ${subjectName.get(d.subject_id) ?? "Sans matière"} — ajouté le ${fmtDate(d.created_at)}${d.description ? ` — ${d.description}` : ""} — [Ouvrir le document](${d.drive_url})`
       );
       return { ok: true, content: `Documents de la classe (${data.length}) :\n${lines.join("\n")}` };
     }
@@ -351,7 +391,7 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       if (error) return { ok: false, content: "Erreur lors de la lecture des hints." };
       if (!data || data.length === 0) return { ok: true, content: "Aucun hint (ancien devoir/examen) disponible." };
       const lines = data.map((h) =>
-        `- ${h.title} (${toFr(h.type)}${h.year ? `, ${h.year}` : ""}) — ${subjectName.get(h.subject_id) ?? "Sans matière"} — lien : ${h.drive_url}`
+        `- ${h.title} (${toFr(h.type)}${h.year ? `, ${h.year}` : ""}) — ${subjectName.get(h.subject_id) ?? "Sans matière"} — [Ouvrir le sujet](${h.drive_url})`
       );
       return { ok: true, content: `Hints disponibles (${data.length}) :\n${lines.join("\n")}` };
     }
@@ -530,22 +570,47 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
       return { ok: true, content: `Notifications (${rows.length}, ${rows.filter((n) => !n.read_at).length} non lues) :\n${lines.join("\n")}` };
     }
 
+    case "searchDocuments":
+    case "searchHints":
+    case "searchRecordings": {
+      const query = String(args.query ?? "").trim();
+      if (query.length < 2) {
+        return { ok: false, content: "Requête trop courte : précisez au moins un titre ou une matière (2 caractères minimum)." };
+      }
+      const category: ResourceCategory =
+        name === "searchDocuments" ? "documents" : name === "searchHints" ? "hints" : "recordings";
+      const outcome = await searchResources({ client: supabase, classId, category, query });
+      if (!outcome.ok) return { ok: false, content: "Erreur lors de la recherche de ressources." };
+      return {
+        ok: true,
+        content: formatResourceResults({
+          category,
+          query,
+          results: outcome.results,
+          alternatives: outcome.alternatives,
+        }),
+      };
+    }
+
     case "searchPlatform": {
-      const query = String(args.query ?? "").trim().toLowerCase();
-      if (query.length < 2) return { ok: true, content: "Requête de recherche trop courte." };
-      const [documents, hints, recordings, tasks] = await Promise.all([
-        supabase.from("documents").select("title").eq("class_id", classId ?? "").ilike("title", `%${query}%`).limit(10),
-        supabase.from("hints").select("title, year").eq("class_id", classId ?? "").ilike("title", `%${query}%`).limit(10),
-        supabase.from("recordings").select("title").eq("class_id", classId ?? "").ilike("title", `%${query}%`).limit(10),
-        supabase.from("tasks").select("title").eq("class_id", classId ?? "").ilike("title", `%${query}%`).limit(10),
-      ]);
-      const lines: string[] = [];
-      (documents.data ?? []).forEach((d) => lines.push(`Document : ${d.title}`));
-      (hints.data ?? []).forEach((h) => lines.push(`Hint : ${h.title}${h.year ? ` (${h.year})` : ""}`));
-      (recordings.data ?? []).forEach((r) => lines.push(`Cours enregistré : ${r.title}`));
-      (tasks.data ?? []).forEach((t) => lines.push(`Devoir : ${t.title}`));
-      if (lines.length === 0) return { ok: true, content: `Aucune ressource trouvée pour « ${query} ».` };
-      return { ok: true, content: `Résultats pour « ${query} » :\n${lines.join("\n")}` };
+      // Recherche transverse : les 3 catégories réelles de ressources.
+      const query = String(args.query ?? "").trim();
+      if (query.length < 2) return { ok: true, content: "Requête de recherche trop courte (2 caractères minimum)." };
+      const categories: ResourceCategory[] = ["documents", "hints", "recordings"];
+      const outcomes = await Promise.all(
+        categories.map((category) => searchResources({ client: supabase, classId, category, query }))
+      );
+      if (outcomes.some((o) => !o.ok)) return { ok: false, content: "Erreur lors de la recherche de ressources." };
+
+      const sections = categories.map((category, i) =>
+        formatResourceResults({
+          category,
+          query,
+          results: outcomes[i]!.results,
+          alternatives: outcomes[i]!.alternatives,
+        })
+      );
+      return { ok: true, content: sections.join("\n\n") };
     }
 
     case "suggestActions": {

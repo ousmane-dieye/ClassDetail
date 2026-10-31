@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Check, Copy, Code2 } from "lucide-react";
 
 function isSafeUrl(url: string): boolean {
@@ -8,7 +9,14 @@ function isSafeUrl(url: string): boolean {
   return /^(https?:\/\/|mailto:)/i.test(trimmed) || trimmed.startsWith("/dashboard");
 }
 
-function renderInline(text: string, keyPrefix: string | number): React.ReactNode[] {
+const LINK_CLASS =
+  "font-medium underline underline-offset-4 decoration-primary/40 transition-colors hover:text-primary hover:decoration-primary";
+
+function renderInline(
+  text: string,
+  keyPrefix: string | number,
+  onNavigate?: () => void
+): React.ReactNode[] {
   const RE = /(`[^`]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^)\n]+\))/g;
   const parts = text.split(RE);
   const out: React.ReactNode[] = [];
@@ -28,30 +36,45 @@ function renderInline(text: string, keyPrefix: string | number): React.ReactNode
     }
 
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      out.push(<strong key={k} className="font-bold text-foreground">{renderInline(part.slice(2, -2), k)}</strong>);
+      out.push(<strong key={k} className="font-bold text-foreground">{renderInline(part.slice(2, -2), k, onNavigate)}</strong>);
       continue;
     }
 
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2 && !part.includes("**")) {
-      out.push(<em key={k} className="italic text-foreground">{renderInline(part.slice(1, -1), k)}</em>);
+      out.push(<em key={k} className="italic text-foreground">{renderInline(part.slice(1, -1), k, onNavigate)}</em>);
       continue;
     }
 
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
-      const [, label, rawUrl] = linkMatch;
+      const [, label = "", rawUrl] = linkMatch;
       const url = (rawUrl ?? "").trim();
       if (isSafeUrl(url)) {
+        const className = `${LINK_CLASS} text-primary`;
+        // Le libellé peut être mis en forme (titre en gras) : on le rend en
+        // interne, SANS jamais y insérer un lien imbriqué.
+        const labelNodes = renderInline(label.replace(/\[([^\]\n]+)\]\([^)\n]+\)/g, "$1"), `${k}-l`);
         out.push(
-          <a
-            key={k}
-            href={url}
-            target={url.startsWith("/") ? undefined : "_blank"}
-            rel={url.startsWith("/") ? undefined : "noopener noreferrer"}
-            className="text-primary underline underline-offset-4 hover:text-primary/80 font-medium"
-          >
-            {label}
-          </a>
+          url.startsWith("/") ? (
+            <Link
+              key={k}
+              href={url}
+              onClick={onNavigate}
+              className={className}
+            >
+              {labelNodes}
+            </Link>
+          ) : (
+            <a
+              key={k}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={className}
+            >
+              {labelNodes}
+            </a>
+          )
         );
       } else {
         out.push(label);
@@ -124,7 +147,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
   );
 }
 
-export function Markdown({ content }: { content: string }) {
+export function Markdown({ content, onNavigate }: { content: string; onNavigate?: () => void }) {
   const lines = content.split("\n");
   const blocks: React.ReactNode[] = [];
   let key = 0;
@@ -154,7 +177,7 @@ export function Markdown({ content }: { content: string }) {
       const Tag = level === 1 ? "h3" : level === 2 ? "h4" : "h5";
       blocks.push(
         <Tag key={k} className={`${level === 1 ? "mt-3 text-lg font-bold tracking-tight text-foreground" : level === 2 ? "mt-2 text-base font-semibold text-foreground" : "mt-1.5 text-sm font-semibold text-foreground"}`}>
-          {renderInline(text, k)}
+          {renderInline(text, k, onNavigate)}
         </Tag>
       );
       i++;
@@ -170,7 +193,7 @@ export function Markdown({ content }: { content: string }) {
       blocks.push(
         <ul key={k} className="my-2 list-disc space-y-1 pl-5 text-foreground">
           {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it, `${k}-${idx}`)}</li>
+            <li key={idx}>{renderInline(it, `${k}-${idx}`, onNavigate)}</li>
           ))}
         </ul>
       );
@@ -186,7 +209,7 @@ export function Markdown({ content }: { content: string }) {
       blocks.push(
         <ol key={k} className="my-2 list-decimal space-y-1 pl-5 text-foreground">
           {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it, `${k}-${idx}`)}</li>
+            <li key={idx}>{renderInline(it, `${k}-${idx}`, onNavigate)}</li>
           ))}
         </ol>
       );
@@ -201,7 +224,7 @@ export function Markdown({ content }: { content: string }) {
       }
       blocks.push(
         <blockquote key={k} className="my-2 border-l-4 border-primary/50 bg-primary/5 p-3 rounded-r-xl italic text-muted-foreground">
-          {renderInline(quoteLines.join("\n"), k)}
+          {renderInline(quoteLines.join("\n"), k, onNavigate)}
         </blockquote>
       );
       continue;
@@ -214,11 +237,11 @@ export function Markdown({ content }: { content: string }) {
 
     blocks.push(
       <p key={k} className="my-1.5 leading-relaxed text-foreground">
-        {renderInline(line, k)}
+        {renderInline(line, k, onNavigate)}
       </p>
     );
     i++;
   }
 
-  return <div className="space-y-1 text-sm">{blocks}</div>;
+  return <div className="space-y-1.5 text-sm">{blocks}</div>;
 }

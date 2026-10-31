@@ -336,7 +336,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] rounded-2xl p-4 shadow-subtle ${m.role === "user" ? "rounded-br-xs bg-primary text-primary-foreground" : "rounded-bl-xs border border-border bg-card text-foreground"}`}>
                     {m.role === "assistant" ? (
-                      <Markdown content={m.content} />
+                      <Markdown content={m.content} onNavigate={onClose} />
                     ) : (
                       <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
                     )}

@@ -2,15 +2,18 @@
  * Intégration OpenAI pour l'assistant — CÔTÉ SERVEUR UNIQUEMENT.
  *
  * - L'appel à l'API OpenAI ne se fait JAMAIS depuis le navigateur.
- * - Boucle d'outils (ReAct) : le modèle peut appeler les outils internes
- *   (getMyAssignments, getUpcomingDeadlines, …) ; les résultats sont injectés
- *   dans la conversation et le modèle peut enchaîner jusqu'à 4 itérations.
+ * - La boucle d'outils (ReAct) : le modèle peut appeler les outils internes
+ *   (getMyAssignments, getUpcomingDeadlines, searchDocuments, …) ; les résultats
+ *   sont injectés dans la conversation et le modèle peut enchaîner jusqu'à 4 itérations.
+ * - Les liens de ressources de la réponse finale sont vérifiés : seules les URLs
+ *   réellement lues dans les résultats d'outils (ou l'historique) subsistent.
  * - Aucun secret n'est exposé ; les erreurs sont loggées sans clé.
  * - En l'absence de OPENAI_API_KEY, la fonction retourne un message explicatif
  *   (jamais de crash) pour rester dégradable.
  */
 
 import { TOOL_DEFINITIONS, executeTool, type ToolContext } from "@/lib/ai/tools";
+import { collectUrlsFromMessages, extractUrls, sanitizeAssistantLinks } from "@/lib/ai/links";
 import type { AssistantAction } from "@/types/database.types";
 
 const OPENAI_URL =
@@ -65,6 +68,8 @@ export function buildSystemPrompt(input: {
     `6. Si une information n'existe pas ou que tu ne peux pas la vérifier, dis-le honnêtement. N'invente jamais d'URL, de lien ou de ressource.`,
     `7. Reste pédagogique : tu peux détailler quand on te le demande, mais reste bref par défaut.`,
     `8. PÉRIMÈTRE STRICT : tu ne réponds qu'aux questions liées à la plateforme ClassPulse et à la vie de la classe (tâches, devoirs, cours, documents, hints, emploi du temps, évaluations, chat, notifications, statistiques, organisation). Pour TOUTE autre question (politique, finances, crypto, santé, religion, relations, jeux, culture générale, mathématiques ou code hors plateforme, etc.), refuse poliment et rappelle que tu es limité à ClassPulse.`,
+    `9. RECHERCHE DE RESSOURCES : une demande du type « donne-moi les TD de maths », « tu as un cours sur les pointeurs », « anciens examens d'algorithmique », « un corrigé pour le TD de C », « retrouve le cours Java que j'avais enregistré », « quels supports en algorithmique » est une RECHERCHE, même sans le mot « cherche ». Appelle l'outil adapté : searchDocuments (module Documents : cours, supports, PDF, TD, TP), searchHints (Hints & Sujets : sujets d'examen, devoirs, annales, corrigés) ou searchRecordings (cours enregistrés). Si la catégorie est incertaine, appelle les 2 ou 3 outils pertinents dans le même tour — n'appelle JAMAIS tous les outils pour une question ordinaire.`,
+    `10. PRÉSENTATION DES RESSOURCES : présente chaque ressource sur sa propre ligne (liste numérotée, aérée) : le TITRE EN GRAS devient le lien markdown vers le fichier réel, suivi du type et de la matière quand ils sont fournis, puis d'un second lien vers la page interne du module (« Voir dans… »). Recopie les URL SANS LES MODIFIER depuis le résultat de l'outil (lien de titre = fichier, lien « Voir dans… » = page interne). Maximum 5 ressources, les plus pertinentes d'abord, sans doublon. Si l'outil répond AUCUN résultat, utilise le message fourni tel quel et, au besoin, présente les alternatives proches explicitement comme alternatives. Ne présente JAMAIS un document, un titre, une matière ou un lien que tu n'as pas lu dans un résultat d'outil.`,
   ].join("\n");
 }
 
@@ -96,6 +101,16 @@ export async function generateAssistantReply(
   const messages: OpenAIChatMessage[] = [...initialMessages];
   let actions: AssistantAction[] = [];
 
+  // URLs réelles autorisées dans la réponse : historique de la conversation
+  // (produit lui-même par les outils) + résultats des outils appelés ici.
+  // Tout lien de ressource non présent dans cette liste est retiré à la fin.
+  const allowedUrls = new Set<string>(collectUrlsFromMessages(initialMessages));
+  const finalize = (content: string, degraded: boolean): AssistantReply => ({
+    content: sanitizeAssistantLinks(content, allowedUrls),
+    actions,
+    degraded,
+  });
+
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const controller = new AbortController();
@@ -126,11 +141,7 @@ export async function generateAssistantReply(
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         console.error("Assistant : OpenAI HTTP %s (sans clé ni corps).", res.status);
-        return {
-          content: "L'assistant rencontre une erreur temporaire avec le service IA. Réessayez dans un instant.",
-          actions,
-          degraded: true,
-        };
+        return finalize("L'assistant rencontre une erreur temporaire avec le service IA. Réessayez dans un instant.", true);
       }
 
       const json = (await res.json()) as {
@@ -138,12 +149,12 @@ export async function generateAssistantReply(
       };
       const message = json.choices?.[0]?.message;
       if (!message) {
-        return { content: "Réponse IA vide. Réessayez.", actions, degraded: true };
+        return finalize("Réponse IA vide. Réessayez.", true);
       }
 
       const toolCalls = message.tool_calls ?? [];
       if (toolCalls.length === 0) {
-        return { content: message.content ?? "", actions, degraded: false };
+        return finalize(message.content ?? "", false);
       }
 
       // Ajoute le message assistant avec les tool_calls, puis exécute chaque outil.
@@ -165,6 +176,9 @@ export async function generateAssistantReply(
         }
 
         const result = await executeTool(fnName, args, ctx);
+        // Toute URL présente dans un résultat d'outil vient de la base : elle
+        // devient « autorisée » pour la réponse finale.
+        for (const url of extractUrls(result.content)) allowedUrls.add(url);
         if (fnName === "suggestActions" && result.actions) {
           actions = result.actions;
         }
@@ -177,17 +191,15 @@ export async function generateAssistantReply(
       }
     }
 
-    return {
-      content: "Je n'ai pas pu finaliser ma réponse après plusieurs tentatives. Reformulez votre question.",
-      actions,
-      degraded: true,
-    };
+    return finalize(
+      "Je n'ai pas pu finaliser ma réponse après plusieurs tentatives. Reformulez votre question.",
+      true
+    );
   } catch (err) {
     console.error("Assistant : erreur OpenAI (détail sans clé) :", (err as Error)?.message ?? "inconnue");
-    return {
-      content: "L'assistant a rencontré une erreur inattendue. Vérifiez votre connexion et réessayez.",
-      actions,
-      degraded: true,
-    };
+    return finalize(
+      "L'assistant a rencontré une erreur inattendue. Vérifiez votre connexion et réessayez.",
+      true
+    );
   }
 }
