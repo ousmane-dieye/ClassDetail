@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assistantUserMessageSchema } from "@/lib/validation/schemas";
 import { checkRateLimit, type RateLimitResult } from "@/lib/security/rateLimit";
 import { buildSystemPrompt, generateAssistantReply, type AssistantReply, type OpenAIChatMessage } from "@/lib/ai/openai";
+import { chunkForStream } from "@/lib/ai/streamChunks";
 import { checkTopicGuard } from "@/lib/ai/guard";
 import type { ToolContext } from "@/lib/ai/tools";
 
@@ -186,7 +187,11 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const chunks = reply.content.match(/.{1,24}(\s|$)/gs) ?? [reply.content];
+        // Découpage SANS PERTE : le texte streamé doit être identique au
+        // texte sauvegardé juste au-dessus, sinon le Markdown affiché en
+        // direct (liens `[Titre](URL)`) diverge de celui restauré depuis
+        // l'historique. L'ancien regex `/g` sautait le début des URL longues.
+        const chunks = chunkForStream(reply.content);
         for (const part of chunks) {
           controller.enqueue(encoder.encode(sse({ type: "delta", text: part })));
           await new Promise((r) => setTimeout(r, 14));

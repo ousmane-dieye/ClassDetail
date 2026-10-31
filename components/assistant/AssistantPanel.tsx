@@ -30,6 +30,17 @@ interface StreamEvent {
   actions?: Array<{ label: string; href: string }>;
 }
 
+/** Analyse un événement SSE (`data: {...}`) ; null si incomplet ou illisible. */
+function parseSseEvent(raw: string): StreamEvent | null {
+  const line = raw.trim();
+  if (!line.startsWith("data:")) return null;
+  try {
+    return JSON.parse(line.slice(5).trim()) as StreamEvent;
+  } catch {
+    return null;
+  }
+}
+
 export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [chats, setChats] = useState<AssistantChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -171,6 +182,22 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         let finalMessageId = "";
         let finalActions: Array<{ label: string; href: string }> = [];
 
+        // Applique un événement SSE au texte accumulé. Les fragments sont
+        // concaténés à l'identique (le serveur découpe sans perte) : le texte
+        // affiché en direct rejoint donc exactement le contenu sauvegardé.
+        const applyEvent = (evt: StreamEvent) => {
+          if (evt.type === "delta" && evt.text) {
+            streamed += evt.text;
+            setStreamText(streamed);
+          } else if (evt.type === "done") {
+            finalChatId = evt.chatId ?? finalChatId;
+            finalMessageId = evt.messageId ?? "";
+            finalActions = evt.actions ?? [];
+          } else if (evt.type === "error") {
+            setError(evt.text ?? "Erreur de streaming.");
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -178,27 +205,19 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           const parts = buffer.split("\n\n");
           buffer = parts.pop() ?? "";
           for (const part of parts) {
-            const line = part.trim();
-            if (!line.startsWith("data:")) continue;
-            try {
-              const evt = JSON.parse(line.slice(5).trim()) as StreamEvent;
-              if (evt.type === "delta" && evt.text) {
-                streamed += evt.text;
-                setStreamText(streamed);
-              } else if (evt.type === "done") {
-                finalChatId = evt.chatId ?? finalChatId;
-                finalMessageId = evt.messageId ?? "";
-                finalActions = evt.actions ?? [];
-              } else if (evt.type === "error") {
-                setError(evt.text ?? "Erreur de streaming.");
-              }
-            } catch {
-              /* ignore */
-            }
+            const evt = parseSseEvent(part);
+            if (evt) applyEvent(evt);
           }
         }
 
-        streamed += getRemainingBuffer(buffer);
+        // Synchronisation finale : on n'ignore ni les derniers octets retenus
+        // par le décodeur ni le dernier événement arrivé sans séparateur
+        // final (certains proxys suppriment les sauts de ligne de fin) —
+        // sinon les derniers fragments de texte ou l'événement `done`
+        // (messageId, actions) seraient perdus.
+        buffer += decoder.decode();
+        const tailEvent = parseSseEvent(buffer);
+        if (tailEvent) applyEvent(tailEvent);
 
         setStreamingMessageId(finalMessageId);
         setStreamActions(finalActions);
@@ -224,17 +243,6 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     [activeChatId, input, sending, loadChats]
   );
 
-  const getRemainingBuffer = (buf: string): string => {
-    const line = buf.trim();
-    if (!line.startsWith("data:")) return "";
-    try {
-      const evt = JSON.parse(line.slice(5).trim()) as StreamEvent;
-      return evt.type === "delta" && evt.text ? evt.text : "";
-    } catch {
-      return "";
-    }
-  };
-
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -245,7 +253,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     [sendMessage]
   );
 
-  const displayMessages = sending && streamText ? [...messages, { id: `pending-${Date.now()}`, role: "assistant" as const, content: streamText, actions: [], created_at: new Date().toISOString() }] : messages;
+  // Message en cours de génération : clé STABLE (et non `Date.now()`) pour
+  // que React mette à jour le nœud existant au lieu de démonter/remonter le
+  // Markdown à chaque fragment — le rendu reste donc incrémental et stable.
+  const displayMessages = sending && streamText
+    ? [...messages, { id: "pending-assistant", role: "assistant" as const, content: streamText, actions: [], created_at: new Date().toISOString() }]
+    : messages;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/50 backdrop-blur-sm sm:items-center sm:p-4 animate-fade-in" role="dialog" aria-modal="true" aria-label="Assistant IA ClassPulse">
