@@ -5,7 +5,7 @@ import React from "react";
 // ---------------------------------------------------------------------------
 // Tests interface — bibliothèque « Documents ». Rendu SSR des états :
 //  node env sans DOM, on vérifie donc le contenu affiché, la présence de la
-//  barre de recherche et du sélecteur de tri (4 libellés), les compteurs, la
+//  barre de recherche et du sélecteur de tri (5 libellés), les compteurs, la
 //  recherche active appliquée au rendu, et la conservation des permissions
 //  (suppression réservée aux ressources où `canDelete` est true, précalculé
 //  côté serveur). Les tests de logique (recherche, accents, tris,
@@ -98,12 +98,25 @@ describe("DocumentsLibrary — états", () => {
 });
 
 describe("DocumentsLibrary — barre de contrôle", () => {
-  it("propose les 4 libellés de tri attendus", () => {
+  it("propose les 5 libellés de tri attendus (dont « Par matière »)", () => {
     const html = render(<DocumentsLibrary documents={LIBRARY} />);
     for (const option of DOCUMENT_SORT_OPTIONS) {
       expect(html).toContain(option.label);
     }
-    expect(DOCUMENT_SORT_OPTIONS).toHaveLength(4);
+    expect(DOCUMENT_SORT_OPTIONS).toHaveLength(5);
+    expect(DOCUMENT_SORT_OPTIONS.at(-1)).toEqual({
+      value: "subject_asc",
+      label: "Par matière",
+    });
+  });
+
+  it("tri « Par matière » sélectionné : les cartes sont regroupées par matière", () => {
+    const html = render(<DocumentsLibrary documents={LIBRARY} initialSort="subject_asc" />);
+    // Ordre par matière : Informatique (d1) puis Physique (d2), contrairement
+    // au tri par défaut « Plus récents » qui place d2 avant d1.
+    expect(html.indexOf("Polycopié Algorithmique")).toBeLessThan(
+      html.indexOf("Optique ondulatoire")
+    );
   });
 
   it("présente le bouton d'effacement dès qu'une recherche est saisie", () => {

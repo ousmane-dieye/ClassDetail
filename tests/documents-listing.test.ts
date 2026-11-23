@@ -16,8 +16,8 @@ import {
 // ---------------------------------------------------------------------------
 // Tests listing — logique d'affichage du module « Documents » (pures).
 //  Recherche locale insensible à la casse / aux accents sur titre + matière +
-//  description (les seuls champs réellement disponibles en base), 4 tris
-//  déterministes sur `created_at` (date de dépôt) et titre, combinaison
+//  description (les seuls champs réellement disponibles en base), 5 tris
+//  déterministes sur `created_at` (date de dépôt), titre et matière, combinaison
 //  recherche + tri, états UI. Normalisation et racine commune partagées avec
 //  « Cours enregistrés » (tests de référence : tests/recordings-listing.test.ts).
 // ---------------------------------------------------------------------------
@@ -117,12 +117,13 @@ describe("filterDocuments — recherche", () => {
 /* ─────────────────────────────── Tri ─────────────────────────────── */
 
 describe("DOCUMENT_SORT_OPTIONS", () => {
-  it("propose exactement les 4 options attendues", () => {
+  it("propose exactement les 5 options attendues (les 4 existantes + matière)", () => {
     expect(DOCUMENT_SORT_OPTIONS.map((o) => o.label)).toEqual([
       "Plus récents",
       "Plus anciens",
       "Titre : A → Z",
       "Titre : Z → A",
+      "Par matière",
     ]);
     expect(DEFAULT_DOCUMENT_SORT).toBe("date_desc");
   });
@@ -130,6 +131,7 @@ describe("DOCUMENT_SORT_OPTIONS", () => {
   it("valide ou rejette une clé de tri", () => {
     expect(isDocumentSortKey("date_desc")).toBe(true);
     expect(isDocumentSortKey("title_asc")).toBe(true);
+    expect(isDocumentSortKey("subject_asc")).toBe(true);
     expect(isDocumentSortKey("relevance")).toBe(false);
     expect(isDocumentSortKey(undefined)).toBe(false);
   });
@@ -213,6 +215,64 @@ describe("sortDocuments — titres (A → Z / Z → A)", () => {
   });
 });
 
+/* ─────────────────────── Tri par matière ─────────────────────── */
+
+describe("sortDocuments — par matière", () => {
+  const subjects: DocumentListItem[] = [
+    doc({ id: "s1", title: "Zoologie", subjectName: "Physique", createdAt: "2026-01-03T00:00:00.000Z" }),
+    doc({ id: "s2", title: "Intégrales", subjectName: "Mathématiques", createdAt: "2026-01-01T00:00:00.000Z" }),
+    doc({ id: "s3", title: "Algorithmique", subjectName: "Informatique", createdAt: "2026-01-02T00:00:00.000Z" }),
+    doc({ id: "s4", title: "Optique", subjectName: "physique", createdAt: "2026-01-04T00:00:00.000Z" }),
+  ];
+
+  it("regroupe par matière dans l'ordre alphabétique (casse et accents ignorés)", () => {
+    expect(ids(sortDocuments(subjects, "subject_asc"))).toEqual([
+      "s3", // Informatique
+      "s2", // Mathématiques
+      "s4", // physique : « Optique » avant « Zoologie »
+      "s1", // Physique (même matière, départagée par titre)
+    ]);
+  });
+
+  it("à matière identique : ordre alphabétique par titre, puis date de dépôt", () => {
+    const sameSubject = [
+      doc({ id: "b", title: "Zoologie", subjectName: "Physique", createdAt: "2026-02-01T00:00:00.000Z" }),
+      doc({ id: "a", title: "Optique", subjectName: "Physique", createdAt: "2026-01-01T00:00:00.000Z" }),
+      doc({ id: "c", title: "optique", subjectName: "Physique", createdAt: "2026-03-01T00:00:00.000Z" }),
+    ];
+    expect(ids(sortDocuments(sameSubject, "subject_asc"))).toEqual(["c", "a", "b"]);
+
+    const tiedTitles = [
+      doc({ id: "old", title: "Cours", subjectName: "Physique", createdAt: "2026-01-01T00:00:00.000Z" }),
+      doc({ id: "new", title: "cours", subjectName: "Physique", createdAt: "2026-03-01T00:00:00.000Z" }),
+    ];
+    expect(ids(sortDocuments(tiedTitles, "subject_asc"))).toEqual(["new", "old"]);
+  });
+
+  it("place les documents sans matière à la fin, départagés par titre", () => {
+    const withMissing = [
+      doc({ id: "none-b", title: "Sans titre B", subjectName: null }),
+      doc({ id: "known", title: "Sans titre A", subjectName: "Physique" }),
+      doc({ id: "blank", title: "Sans titre C", subjectName: "   " }),
+      doc({ id: "none-a", title: "Sans titre A", subjectName: null, createdAt: "2026-06-01T00:00:00.000Z" }),
+    ];
+    expect(ids(sortDocuments(withMissing, "subject_asc"))).toEqual([
+      "known",
+      "none-a",
+      "none-b",
+      "blank",
+    ]);
+  });
+
+  it("n'altère pas la liste d'origine et reste déterministe", () => {
+    const input = [...subjects];
+    const first = ids(sortDocuments(input, "subject_asc"));
+    expect(ids(sortDocuments(input, "subject_asc"))).toEqual(first);
+    expect(ids(input)).toEqual(["s1", "s2", "s3", "s4"]);
+    expect(sortDocuments(input, "subject_asc")).not.toBe(input);
+  });
+});
+
 /* ───────────────────── Combinaison recherche + tri ───────────────────── */
 
 describe("applyDocumentLibrary — recherche + tri combinés", () => {
@@ -237,6 +297,16 @@ describe("applyDocumentLibrary — recherche + tri combinés", () => {
       sorted.filter((id) => id === "c3")
     );
     expect(ids(applyDocumentLibrary(items, "", "date_desc"))).toEqual(sorted);
+  });
+
+  it("même recherche + « Par matière » : le regroupement respecte le filtre", () => {
+    const bySubject: DocumentListItem[] = [
+      doc({ id: "m1", title: "Optique", subjectName: "Physique", description: "algorithmique" }),
+      doc({ id: "m2", title: "Algorithmique", subjectName: "Informatique", description: "algorithmique" }),
+      doc({ id: "m3", title: "Triangles", subjectName: "Mathématiques", description: "autre" }),
+    ];
+    expect(ids(applyDocumentLibrary(bySubject, "algorithmique", "subject_asc"))).toEqual(["m2", "m1"]);
+    expect(ids(applyDocumentLibrary(bySubject, "", "subject_asc"))).toEqual(["m2", "m3", "m1"]);
   });
 
   it("recherche sans résultat → liste vide (tri inchangé en interne)", () => {

@@ -45,6 +45,7 @@ export const DOCUMENT_SORT_OPTIONS = [
   { value: "date_asc", label: "Plus anciens" },
   { value: "title_asc", label: "Titre : A → Z" },
   { value: "title_desc", label: "Titre : Z → A" },
+  { value: "subject_asc", label: "Par matière" },
 ] as const;
 
 export type DocumentSortKey = (typeof DOCUMENT_SORT_OPTIONS)[number]["value"];
@@ -104,6 +105,39 @@ function compareTitleReverse(a: DocumentListItem, b: DocumentListItem): number {
 }
 
 /**
+ * Nom de matière issu de la relation réelle `documents.subject_id →
+ * subjects.id` (résolu côté serveur dans la page). Une valeur absente ou
+ * blanche est traitée comme « sans matière ».
+ */
+function subjectLabel(document: DocumentListItem): string | null {
+  const name = document.subjectName?.trim();
+  return name ? name : null;
+}
+
+/**
+ * « Par matière » : regroupe les documents par nom de matière (ordre
+ * alphabétique français, insensible à la casse et aux accents), puis par titre
+ * alphabétique à matière égale. Les documents sans matière sont regroupés en
+ * fin de liste. Le départage par date de dépôt puis identifiant garantit un
+ * ordre total, donc déterministe.
+ */
+function compareSubjects(a: DocumentListItem, b: DocumentListItem): number {
+  const subjectA = subjectLabel(a);
+  const subjectB = subjectLabel(b);
+
+  if (!subjectA || !subjectB) {
+    if (subjectA === subjectB) return compareTitleAsc(a, b);
+    return subjectA ? -1 : 1;
+  }
+
+  const bySubject = subjectA.localeCompare(subjectB, "fr", {
+    sensitivity: "base",
+  });
+  if (bySubject !== 0) return bySubject;
+  return compareTitleAsc(a, b);
+}
+
+/**
  * Tri déterministe : l'ordre est total (départage systématique), donc deux
  * exécutions sur les mêmes données rendent exactement le même classement,
  * y compris en cas d'égalité de date ou de titre.
@@ -122,6 +156,9 @@ export function sortDocuments(
       break;
     case "title_desc":
       sorted.sort(compareTitleReverse);
+      break;
+    case "subject_asc":
+      sorted.sort(compareSubjects);
       break;
     case "date_desc":
     default:
