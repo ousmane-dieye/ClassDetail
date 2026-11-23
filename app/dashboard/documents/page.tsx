@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { FileText, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import {
+  ALL_DOCUMENT_SUBJECTS,
   DEFAULT_DOCUMENT_SORT,
+  getDocumentSubjectOptions,
   isDocumentSortKey,
   type DocumentListItem,
   type DocumentSortKey,
@@ -18,7 +20,7 @@ import { DocumentsLibrary } from "@/components/documents/DocumentsLibrary";
 export default async function DocumentsPage({
   searchParams,
 }: {
-  searchParams: { q?: string; sort?: string };
+  searchParams: { q?: string; sort?: string; subject?: string };
 }) {
   const supabase = createClient();
   const {
@@ -52,7 +54,7 @@ export default async function DocumentsPage({
 
   // Incident de chargement : jamais de bibliothèque « vide » présentée à tort.
   const loadError = documentsError || subjectsError
-    ? "Chargement des documents impossible. Réessayez dans un instant."
+    ? "Chargement des documents et des matières impossible. Réessayez dans un instant."
     : null;
 
   // Mappeage applicatif subject_id → nom de la matière (pas de jointure
@@ -66,9 +68,19 @@ export default async function DocumentsPage({
     description: d.description,
     createdAt: d.created_at,
     driveUrl: d.drive_url,
+    subjectId: d.subject_id ?? null,
     subjectName: (d.subject_id && subjectNames.get(d.subject_id)) || null,
     canDelete: canDelete(d),
   }));
+
+  // Filtre initial : uniquement une matière réellement présente dans la
+  // bibliothèque de l'utilisateur (RLS) — jamais un identifiant arbitraire.
+  const availableSubjects = getDocumentSubjectOptions(items);
+  const initialSubject =
+    typeof searchParams.subject === "string" &&
+    availableSubjects.some((option) => option.value === searchParams.subject)
+      ? searchParams.subject
+      : ALL_DOCUMENT_SUBJECTS;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -122,6 +134,7 @@ export default async function DocumentsPage({
           onDelete={deleteDocumentAction}
           initialQuery={typeof searchParams.q === "string" ? searchParams.q : ""}
           initialSort={initialSort}
+          initialSubject={initialSubject}
         />
       )}
     </div>

@@ -5,8 +5,9 @@ import React from "react";
 // ---------------------------------------------------------------------------
 // Tests interface — bibliothèque « Documents ». Rendu SSR des états :
 //  node env sans DOM, on vérifie donc le contenu affiché, la présence de la
-//  barre de recherche et du sélecteur de tri (5 libellés), les compteurs, la
-//  recherche active appliquée au rendu, et la conservation des permissions
+//  barre de recherche, du filtre matière et du sélecteur de tri (5 libellés),
+//  les compteurs, la recherche et le filtre actifs appliqués au rendu, et la
+//  conservation des permissions
 //  (suppression réservée aux ressources où `canDelete` est true, précalculé
 //  côté serveur). Les tests de logique (recherche, accents, tris,
 //  combinaison) sont dans tests/documents-listing.test.ts.
@@ -29,6 +30,7 @@ function doc(over: Partial<DocumentListItem> & { id: string }): DocumentListItem
     description: null,
     createdAt: "2026-03-01T09:00:00.000Z",
     driveUrl: "https://drive.example/doc",
+    subjectId: null,
     subjectName: null,
     canDelete: false,
     ...over,
@@ -39,6 +41,7 @@ const LIBRARY: DocumentListItem[] = [
   doc({
     id: "d1",
     title: "Polycopié Algorithmique",
+    subjectId: "sub-info",
     subjectName: "Informatique",
     description: "Récursivité et complexité",
     createdAt: "2026-05-12T10:00:00.000Z",
@@ -46,6 +49,7 @@ const LIBRARY: DocumentListItem[] = [
   doc({
     id: "d2",
     title: "Optique ondulatoire",
+    subjectId: "sub-phys",
     subjectName: "Physique",
     description: "Interférences et diffraction",
     createdAt: "2026-05-20T08:00:00.000Z",
@@ -122,6 +126,66 @@ describe("DocumentsLibrary — barre de contrôle", () => {
   it("présente le bouton d'effacement dès qu'une recherche est saisie", () => {
     const html = render(<DocumentsLibrary documents={LIBRARY} initialQuery="physique" />);
     expect(html).toContain("Effacer la recherche");
+  });
+});
+
+describe("DocumentsLibrary — filtre par matière", () => {
+  it("affiche « Toutes les matières » puis chaque matière disponible une seule fois", () => {
+    const withDuplicate = [
+      ...LIBRARY,
+      doc({ id: "d3", title: "Autre polycopié", subjectId: "sub-info", subjectName: "Informatique" }),
+    ];
+    const html = render(<DocumentsLibrary documents={withDuplicate} />);
+    expect(html).toContain('aria-label="Filtrer par matière"');
+    expect(html).toContain("Toutes les matières");
+    expect(html.match(/>Informatique<\/option>/g)).toHaveLength(1);
+    expect(html.match(/>Physique<\/option>/g)).toHaveLength(1);
+    // Icône discrète + contrôle compact qui se répartit sur plusieurs lignes en mobile.
+    expect(html).toContain("sm:flex-wrap");
+    expect(html).toContain("sm:w-52");
+    expect(html).toContain("pl-9");
+  });
+
+  it("matière sélectionnée : seuls ses documents, avec la recherche et le compteur du périmètre", () => {
+    const html = render(
+      <DocumentsLibrary documents={LIBRARY} initialSubject="sub-info" initialQuery="algorithmique" />
+    );
+    expect(html).toContain("Polycopié Algorithmique");
+    expect(html).not.toContain("Optique ondulatoire");
+    expect(html).toContain("1 sur 1 résultat(s)");
+    expect(html).toContain('value="algorithmique"');
+  });
+
+  it("filtre + recherche + tri restent actifs ensemble", () => {
+    const items: DocumentListItem[] = [
+      doc({ id: "p2", title: "Zeta", subjectId: "sub-phys", subjectName: "Physique", description: "optique" }),
+      doc({ id: "p1", title: "Alpha", subjectId: "sub-phys", subjectName: "Physique", description: "optique" }),
+      doc({ id: "i1", title: "Beta", subjectId: "sub-info", subjectName: "Informatique", description: "optique" }),
+    ];
+    const html = render(
+      <DocumentsLibrary
+        documents={items}
+        initialSubject="sub-phys"
+        initialQuery="optique"
+        initialSort="title_asc"
+      />
+    );
+    expect(html.indexOf("Alpha")).toBeLessThan(html.indexOf("Zeta"));
+    expect(html).not.toContain("Beta");
+  });
+
+  it("matière sans document accessible : message explicite et retour à « Toutes les matières »", () => {
+    const html = render(<DocumentsLibrary documents={LIBRARY} initialSubject="sub-inexistant" />);
+    expect(html).toContain("Aucun document dans cette matière");
+    expect(html).toContain("Voir toutes les matières");
+  });
+
+  it("recherche sans résultat dans la matière : réinitialisation des filtres proposée", () => {
+    const html = render(
+      <DocumentsLibrary documents={LIBRARY} initialSubject="sub-info" initialQuery="chirurgie" />
+    );
+    expect(html).toContain("Aucun résultat dans cette matière");
+    expect(html).toContain("Réinitialiser les filtres");
   });
 });
 

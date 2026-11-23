@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { Filter, Search, X } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -26,6 +26,14 @@ interface LibraryControlsProps {
   sortLabel: string;
   /** Compteur déjà formaté (ex : « 2 sur 5 résultat(s) »). */
   countLabel: string;
+  /**
+   * Filtre optionnel (Documents uniquement). Sans ces props, la barre reste
+   * exactement « recherche + tri + compteur » pour les autres bibliothèques.
+   */
+  subjectOptions?: readonly LibrarySortOption[];
+  subject?: string;
+  onSubjectChange?: (value: string) => void;
+  subjectLabel?: string;
 }
 
 /**
@@ -35,8 +43,8 @@ interface LibraryControlsProps {
  * la barre de « Cours enregistrés ».
  *
  * Composant entièrement contrôlé : aucun état local, l'état vit dans la
- * bibliothèque qui l'emploie — la recherche et le tri restent donc actifs
- * ensemble et ne se réinitialisent jamais l'un l'autre.
+ * bibliothèque qui l'emploie — recherche, filtre et tri restent donc actifs
+ * ensemble et ne se réinitialisent jamais les uns les autres.
  */
 export function LibraryControls({
   query,
@@ -48,13 +56,19 @@ export function LibraryControls({
   onSortChange,
   sortLabel,
   countLabel,
+  subjectOptions,
+  subject,
+  onSubjectChange,
+  subjectLabel = "Filtrer par matière",
 }: LibraryControlsProps) {
   const hasQuery = query.trim().length > 0;
+  const showSubjectFilter =
+    Boolean(subjectOptions?.length) && subject !== undefined && Boolean(onSubjectChange);
 
   return (
     <Card hoverEffect={false} className="border-border/80">
-      <CardContent className="flex flex-col gap-2.5 p-3 sm:flex-row sm:items-center sm:gap-3 sm:p-3.5">
-        <div className="relative min-w-0 flex-1">
+      <CardContent className="flex flex-col gap-2.5 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 sm:p-3.5">
+        <div className="relative min-w-0 flex-1 sm:min-w-[14rem]">
           <Search
             size={16}
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -80,6 +94,28 @@ export function LibraryControls({
           )}
         </div>
 
+        {showSubjectFilter && (
+          <div className="relative w-full shrink-0 sm:w-52">
+            <Filter
+              size={15}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Select
+              aria-label={subjectLabel}
+              value={subject}
+              onChange={(e) => onSubjectChange?.(e.target.value)}
+              className="pl-9"
+            >
+              {subjectOptions?.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+
         <div className="w-full shrink-0 sm:w-56">
           <Select
             aria-label={sortLabel}
@@ -96,7 +132,7 @@ export function LibraryControls({
 
         <p
           role="status"
-          className="shrink-0 text-xs font-medium text-muted-foreground sm:pl-1"
+          className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-auto sm:pl-1"
         >
           {countLabel}
         </p>

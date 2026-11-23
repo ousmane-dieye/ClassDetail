@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  ALL_DOCUMENT_SUBJECTS,
   DEFAULT_DOCUMENT_SORT,
   DOCUMENT_SORT_OPTIONS,
   applyDocumentLibrary,
   filterDocuments,
+  filterDocumentsBySubject,
   formatDocumentCount,
+  getDocumentSubjectOptions,
   isDocumentSortKey,
   matchesDocumentQuery,
   resolveDocumentLibraryState,
@@ -17,8 +20,9 @@ import {
 // Tests listing — logique d'affichage du module « Documents » (pures).
 //  Recherche locale insensible à la casse / aux accents sur titre + matière +
 //  description (les seuls champs réellement disponibles en base), 5 tris
-//  déterministes sur `created_at` (date de dépôt), titre et matière, combinaison
-//  recherche + tri, états UI. Normalisation et racine commune partagées avec
+//  déterministes sur `created_at` (date de dépôt), titre et matière, filtre par
+//  matière, combinaison recherche + filtre + tri, états UI. Normalisation et
+//  racine commune partagées avec
 //  « Cours enregistrés » (tests de référence : tests/recordings-listing.test.ts).
 // ---------------------------------------------------------------------------
 
@@ -28,6 +32,7 @@ function doc(over: Partial<DocumentListItem> & { id: string }): DocumentListItem
     description: null,
     createdAt: "2026-03-01T09:00:00.000Z",
     driveUrl: "https://drive.example/doc",
+    subjectId: null,
     subjectName: null,
     canDelete: false,
     ...over,
@@ -38,6 +43,7 @@ const LIBRARY: DocumentListItem[] = [
   doc({
     id: "d1",
     title: "Polycopié Algorithmique",
+    subjectId: "sub-info",
     subjectName: "Informatique",
     description: "Récursivité et complexité",
     createdAt: "2026-05-12T10:00:00.000Z",
@@ -45,6 +51,7 @@ const LIBRARY: DocumentListItem[] = [
   doc({
     id: "d2",
     title: "TD Mathématiques — Intégrales",
+    subjectId: "sub-math",
     subjectName: "Mathématiques",
     description: "Exercices corrigés du programme complet",
     createdAt: "2026-05-20T08:00:00.000Z",
@@ -52,6 +59,7 @@ const LIBRARY: DocumentListItem[] = [
   doc({
     id: "d3",
     title: "Optique ondulatoire",
+    subjectId: "sub-phys",
     subjectName: "Physique",
     description: "Interférences et diffraction",
     createdAt: "2026-05-20T09:00:00.000Z",
@@ -111,6 +119,58 @@ describe("filterDocuments — recherche", () => {
     expect(matchesDocumentQuery(LIBRARY[0]!, "")).toBe(true);
     expect(matchesDocumentQuery(LIBRARY[0]!, "algorithme")).toBe(true);
     expect(matchesDocumentQuery(LIBRARY[0]!, "chirurgie")).toBe(false);
+  });
+});
+
+/* ─────────────────────── Filtre par matière ─────────────────────── */
+
+describe("getDocumentSubjectOptions — matières disponibles", () => {
+  it("dérive les matières des documents accessibles, sans doublon ni liste figée", () => {
+    expect(getDocumentSubjectOptions(LIBRARY)).toEqual([
+      { value: "sub-info", label: "Informatique" },
+      { value: "sub-math", label: "Mathématiques" },
+      { value: "sub-phys", label: "Physique" },
+    ]);
+  });
+
+  it("ignore les documents sans matière ou dont le nom est indisponible", () => {
+    const withMissing = [
+      doc({ id: "a", subjectId: "sub-z", subjectName: "Zoologie" }),
+      doc({ id: "b", subjectId: "sub-a", subjectName: "algorithmique" }),
+      doc({ id: "c", subjectId: "sub-a", subjectName: "ALGORITHMIQUE" }),
+      doc({ id: "d", subjectId: null, subjectName: "Ancienne matière" }),
+      doc({ id: "e", subjectId: "sub-blank", subjectName: "   " }),
+      doc({ id: "f", subjectId: "sub-null", subjectName: null }),
+    ];
+    expect(getDocumentSubjectOptions(withMissing)).toEqual([
+      { value: "sub-a", label: "algorithmique" },
+      { value: "sub-z", label: "Zoologie" },
+    ]);
+  });
+
+  it("bibliothèque vide → aucune option", () => {
+    expect(getDocumentSubjectOptions([])).toEqual([]);
+  });
+});
+
+describe("filterDocumentsBySubject — filtre strict par identifiant", () => {
+  it("« Toutes les matières » laisse la bibliothèque inchangée", () => {
+    expect(filterDocumentsBySubject(LIBRARY, ALL_DOCUMENT_SUBJECTS)).toBe(LIBRARY);
+    expect(filterDocumentsBySubject(LIBRARY, "")).toBe(LIBRARY);
+  });
+
+  it("ne garde que les documents de la matière sélectionnée", () => {
+    expect(ids(filterDocumentsBySubject(LIBRARY, "sub-phys"))).toEqual(["d3"]);
+    expect(ids(filterDocumentsBySubject(LIBRARY, "sub-math"))).toEqual(["d2"]);
+  });
+
+  it("exclut les documents sans matière et retourne une liste vide si aucune correspondance", () => {
+    const withMissing = [
+      ...LIBRARY,
+      doc({ id: "no-subject", subjectId: null, subjectName: null }),
+    ];
+    expect(ids(filterDocumentsBySubject(withMissing, "sub-info"))).toEqual(["d1"]);
+    expect(filterDocumentsBySubject(withMissing, "sub-inexistant")).toEqual([]);
   });
 });
 
@@ -307,6 +367,20 @@ describe("applyDocumentLibrary — recherche + tri combinés", () => {
     ];
     expect(ids(applyDocumentLibrary(bySubject, "algorithmique", "subject_asc"))).toEqual(["m2", "m1"]);
     expect(ids(applyDocumentLibrary(bySubject, "", "subject_asc"))).toEqual(["m2", "m3", "m1"]);
+  });
+
+  it("filtre matière + recherche + tri simultanés", () => {
+    const combined: DocumentListItem[] = [
+      doc({ id: "a1", title: "Chapitre 2", subjectId: "algo", subjectName: "Algorithmique", createdAt: "2026-01-01T00:00:00.000Z" }),
+      doc({ id: "a2", title: "Chapitre 2", subjectId: "algo", subjectName: "Algorithmique", createdAt: "2026-03-01T00:00:00.000Z" }),
+      doc({ id: "a3", title: "Chapitre 2", subjectId: "maths", subjectName: "Mathématiques", createdAt: "2026-04-01T00:00:00.000Z" }),
+      doc({ id: "a4", title: "Chapitre 1", subjectId: "algo", subjectName: "Algorithmique", createdAt: "2026-05-01T00:00:00.000Z" }),
+    ];
+    expect(ids(applyDocumentLibrary(combined, "Chapitre 2", "date_desc", "algo"))).toEqual(["a2", "a1"]);
+    expect(ids(applyDocumentLibrary(combined, "Chapitre 2", "date_asc", "algo"))).toEqual(["a1", "a2"]);
+    expect(ids(applyDocumentLibrary(combined, "", "date_desc", "algo"))).toEqual(["a4", "a2", "a1"]);
+    // Sans filtre, le comportement historique reste identique.
+    expect(ids(applyDocumentLibrary(combined, "Chapitre 2", "date_desc"))).toEqual(["a3", "a2", "a1"]);
   });
 
   it("recherche sans résultat → liste vide (tri inchangé en interne)", () => {

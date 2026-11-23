@@ -11,13 +11,14 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CS_IMAGES } from "@/lib/constants/images";
 import {
+  ALL_DOCUMENT_SUBJECTS,
   DEFAULT_DOCUMENT_SORT,
   DOCUMENT_SORT_OPTIONS,
-  filterDocuments,
+  applyDocumentLibrary,
   formatDocumentCount,
+  getDocumentSubjectOptions,
   isDocumentSortKey,
   resolveDocumentLibraryState,
-  sortDocuments,
   type DocumentListItem,
   type DocumentSortKey,
 } from "@/lib/documents/listing";
@@ -29,31 +30,60 @@ interface DocumentsLibraryProps {
   onDelete?: (id: string) => Promise<DeleteActionResponse>;
   initialQuery?: string;
   initialSort?: DocumentSortKey;
+  /** Identifiant de matière issu de l'URL, déjà validé côté serveur. */
+  initialSubject?: string;
 }
 
 /**
- * Bibliothèque « Documents » : barre de recherche + sélecteur de tri au-dessus
- * de la grille (mêmes conventions que « Cours enregistrés »). Le filtrage est
- * local (aucune requête réseau par frappe) et le tri est un état indépendant :
- * changer la recherche ne réinitialise jamais le tri choisi.
+ * Bibliothèque « Documents » : filtre par matière, recherche et tri au-dessus
+ * de la grille (mêmes conventions que « Cours enregistrés »). Tout est local
+ * (aucune requête réseau par frappe) et les trois états sont indépendants :
+ * modifier l'un ne réinitialise jamais les deux autres.
  */
 export function DocumentsLibrary({
   documents,
   onDelete,
   initialQuery = "",
   initialSort = DEFAULT_DOCUMENT_SORT,
+  initialSubject = ALL_DOCUMENT_SUBJECTS,
 }: DocumentsLibraryProps) {
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<DocumentSortKey>(
     isDocumentSortKey(initialSort) ? initialSort : DEFAULT_DOCUMENT_SORT
   );
+  const [subject, setSubject] = useState(initialSubject || ALL_DOCUMENT_SUBJECTS);
+
+  // Matières dérivées des seuls documents accessibles : aucune matière vide,
+  // aucun doublon, aucune donnée codée en dur.
+  const subjectOptions = useMemo(
+    () => getDocumentSubjectOptions(documents),
+    [documents]
+  );
+  const subjectLabel =
+    subjectOptions.find((option) => option.value === subject)?.label ?? null;
+  const filterOptions = useMemo(
+    () => [
+      { value: ALL_DOCUMENT_SUBJECTS, label: "Toutes les matières" },
+      ...subjectOptions,
+      // Sélection devenue orpheline après une suppression temps réel : on la
+      // conserve affichée pour laisser l'utilisateur revenir à « Toutes ».
+      ...(subject && subject !== ALL_DOCUMENT_SUBJECTS && !subjectLabel
+        ? [{ value: subject, label: "Matière sélectionnée" }]
+        : []),
+    ],
+    [subjectOptions, subject, subjectLabel]
+  );
 
   const total = documents.length;
   const hasQuery = query.trim().length > 0;
+  const hasSubject = subject !== ALL_DOCUMENT_SUBJECTS;
+  const subjectTotal = hasSubject
+    ? documents.filter((document) => document.subjectId === subject).length
+    : total;
 
   const visible = useMemo(
-    () => sortDocuments(filterDocuments(documents, query), sort),
-    [documents, query, sort]
+    () => applyDocumentLibrary(documents, query, sort, subject),
+    [documents, query, sort, subject]
   );
 
   const state = resolveDocumentLibraryState(total, visible.length);
@@ -73,7 +103,11 @@ export function DocumentsLibrary({
             setSort(isDocumentSortKey(value) ? value : DEFAULT_DOCUMENT_SORT)
           }
           sortLabel="Trier les documents"
-          countLabel={formatDocumentCount(visible.length, total, hasQuery)}
+          subjectOptions={filterOptions}
+          subject={subject}
+          onSubjectChange={setSubject}
+          subjectLabel="Filtrer par matière"
+          countLabel={formatDocumentCount(visible.length, subjectTotal, hasQuery)}
         />
       )}
 
@@ -87,13 +121,41 @@ export function DocumentsLibrary({
       ) : state === "no-results" ? (
         <EmptyState
           icon={Search}
-          title="Aucun résultat"
-          description={`Aucun document ne correspond à « ${query.trim()} ». Vérifiez l'orthographe ou essayez un autre terme.`}
+          title={
+            !hasSubject
+              ? "Aucun résultat"
+              : hasQuery
+                ? "Aucun résultat dans cette matière"
+                : "Aucun document dans cette matière"
+          }
+          description={
+            hasSubject && hasQuery
+              ? `Aucun document de « ${subjectLabel ?? "la matière sélectionnée"} » ne correspond à « ${query.trim()} ». Vérifiez l'orthographe ou réinitialisez les filtres.`
+              : hasSubject
+                ? `Aucun document n'est associé à « ${subjectLabel ?? "la matière sélectionnée"} ». Choisissez une autre matière ou revenez à toutes les matières.`
+                : `Aucun document ne correspond à « ${query.trim()} ». Vérifiez l'orthographe ou essayez un autre terme.`
+          }
           action={
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setQuery("")}>
-              <X size={14} />
-              <span>Effacer la recherche</span>
-            </Button>
+            hasSubject ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  setSubject(ALL_DOCUMENT_SUBJECTS);
+                  if (hasQuery) setQuery("");
+                }}
+              >
+                <X size={14} />
+                <span>{hasQuery ? "Réinitialiser les filtres" : "Voir toutes les matières"}</span>
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setQuery("")}>
+                <X size={14} />
+                <span>Effacer la recherche</span>
+              </Button>
+            )
           }
         />
       ) : (

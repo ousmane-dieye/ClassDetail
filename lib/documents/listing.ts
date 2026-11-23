@@ -29,6 +29,12 @@ export interface DocumentListItem {
   /** Horodatage de dépôt en base, ISO 8601. */
   createdAt: string;
   driveUrl: string;
+  /**
+   * Identifiant réel de la matière (`documents.subject_id → subjects.id`),
+   * utilisé pour le filtre. Peut être null si la donnée est incomplète : le
+   * filtre doit alors exclure le document sans jamais planter.
+   */
+  subjectId: string | null;
   /** Nom de la matière associée, null si indisponible. */
   subjectName: string | null;
   /**
@@ -167,6 +173,52 @@ export function sortDocuments(
   return sorted;
 }
 
+/* ────────────────────────── Filtre par matière ────────────────────────── */
+
+/** Sentinelle du sélecteur « Toutes les matières » (aucun filtre actif). */
+export const ALL_DOCUMENT_SUBJECTS = "";
+
+export interface DocumentSubjectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Matières proposées par le filtre. Elles sont dérivées des documents
+ * effectivement chargés (donc déjà filtrés par RLS) : aucune matière sans
+ * document accessible n'apparaît, aucune liste codée en dur, aucun doublon
+ * (une entrée par identifiant de matière). Tri alphabétique français,
+ * insensible à la casse et aux accents.
+ */
+export function getDocumentSubjectOptions(
+  documents: DocumentListItem[]
+): DocumentSubjectOption[] {
+  const names = new Map<string, string>();
+  for (const document of documents) {
+    const name = document.subjectName?.trim();
+    if (!document.subjectId || !name || names.has(document.subjectId)) continue;
+    names.set(document.subjectId, name);
+  }
+  return Array.from(names, ([value, label]) => ({ value, label })).sort(
+    (a, b) =>
+      a.label.localeCompare(b.label, "fr", { sensitivity: "base" }) ||
+      a.value.localeCompare(b.value)
+  );
+}
+
+/**
+ * Filtre strict par identifiant de matière. Une matière sélectionnée
+ * n'affiche que ses documents ; les documents sans `subjectId` sont exclus
+ * sans erreur. « Toutes les matières » laisse la liste inchangée.
+ */
+export function filterDocumentsBySubject(
+  documents: DocumentListItem[],
+  subjectId: string
+): DocumentListItem[] {
+  if (!subjectId || subjectId === ALL_DOCUMENT_SUBJECTS) return documents;
+  return documents.filter((document) => document.subjectId === subjectId);
+}
+
 /* ───────────────────────────── Recherche ───────────────────────────── */
 
 /** Champs réellement recherchables : titre, matière, description. */
@@ -213,13 +265,21 @@ export function filterDocuments(
   return documents.filter((document) => matchesDocumentQuery(document, normalized));
 }
 
-/** Recherche + tri combinés (le tri est indépendant de la recherche). */
+/**
+ * Filtre matière + recherche + tri combinés. Le filtre est appliqué en premier
+ * (il réduit le périmètre), la recherche ensuite, le tri en dernier : changer
+ * l'un ne réinitialise jamais les deux autres.
+ */
 export function applyDocumentLibrary(
   documents: DocumentListItem[],
   query: string,
-  sort: DocumentSortKey = DEFAULT_DOCUMENT_SORT
+  sort: DocumentSortKey = DEFAULT_DOCUMENT_SORT,
+  subjectId: string = ALL_DOCUMENT_SUBJECTS
 ): DocumentListItem[] {
-  return sortDocuments(filterDocuments(documents, query), sort);
+  return sortDocuments(
+    filterDocuments(filterDocumentsBySubject(documents, subjectId), query),
+    sort
+  );
 }
 
 /* ──────────────────────────── États UI ──────────────────────────── */

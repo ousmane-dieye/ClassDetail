@@ -2,13 +2,25 @@ import { Skeleton } from "@/components/ui/Skeleton";
 
 export default function DocumentsLoading() {
   return (
-    <div className="space-y-8 animate-pulse">
+    <div className="space-y-8 animate-pulse" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Chargement des documents et des matières…</span>
+
       {/* Header */}
       <div className="flex items-start gap-3">
         <Skeleton className="mt-0.5 h-10 w-10 rounded-xl" />
         <div className="space-y-2">
           <Skeleton className="h-7 w-52" />
           <Skeleton className="h-4 w-80" />
+        </div>
+      </div>
+
+      {/* Recherche + filtre matière + tri + compteur */}
+      <div className="rounded-2xl border border-border bg-card p-3.5">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+          <Skeleton className="h-10 flex-1 sm:min-w-[14rem]" />
+          <Skeleton className="h-10 w-full sm:w-52" />
+          <Skeleton className="h-10 w-full sm:w-56" />
+          <Skeleton className="hidden h-4 w-32 sm:block" />
         </div>
       </div>
 
