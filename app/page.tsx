@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { LandingHeader } from "@/components/marketing/LandingHeader";
 import { CS_IMAGES, SITE } from "@/lib/constants/images";
 import {
   BookOpen,
@@ -21,48 +21,32 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+/** Remplace la largeur demandée dans une URL Unsplash existante. */
+function withWidth(url: string, width: number) {
+  return url.replace(/w=\d+/, `w=${width}`);
+}
+
+/** Photos 4/3 servies à la bonne résolution selon le viewport (pas d'image 1600 px sur mobile). */
+function photoProps(src: string, widths: number[], sizes: string, eager = false) {
+  return {
+    src: withWidth(src, widths[widths.length - 1]!),
+    srcSet: widths.map((width) => `${withWidth(src, width)} ${width}w`).join(", "),
+    sizes,
+    width: widths[widths.length - 1]!,
+    height: Math.round((widths[widths.length - 1]! * 3) / 4),
+    loading: eager ? ("eager" as const) : ("lazy" as const),
+    decoding: "async" as const,
+  };
+}
+
+const HERO_SIZES = "(max-width: 1023px) calc(100vw - 2rem), 640px";
+const SECTION_SIZES = "(max-width: 1023px) calc(100vw - 2rem), 640px";
+
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground overflow-x-hidden">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* ── Navigation ── */}
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-border bg-white shadow-subtle transition-transform duration-200 group-hover:scale-105">
-              <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-display text-lg font-bold tracking-tight text-foreground">
-                ClassPulse
-              </span>
-            </div>
-          </Link>
-
-          <nav className="hidden items-center gap-7 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#bibliotheque" className="transition-colors hover:text-foreground">Bibliothèque</a>
-            <a href="#communautes" className="transition-colors hover:text-foreground">Communauté</a>
-            <a href="#assistant" className="transition-colors hover:text-foreground">Assistant</a>
-            <a href="#fonctionnement" className="transition-colors hover:text-foreground">Fonctionnement</a>
-          </nav>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <ThemeToggle />
-            <Link
-              href="/login"
-              className="hidden rounded-xl border border-border px-4 py-2 text-sm font-semibold transition-all hover:border-primary/40 hover:bg-muted sm:inline-flex"
-            >
-              Se connecter
-            </Link>
-            <Link
-              href="/register"
-              className="group inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-subtle transition-all hover:bg-primary/90 hover:shadow-lift"
-            >
-              Rejoindre
-              <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </div>
-        </div>
-      </header>
+      <LandingHeader />
 
       {/* ── Hero ── */}
       <section className="relative">
@@ -87,17 +71,17 @@ export default function HomePage() {
               classe a besoin, réuni dans un espace calme et pensé pour durer.
             </p>
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <Link
                 href="/register"
-                className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-subtle transition-all hover:bg-primary/90 hover:shadow-lift"
+                className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-subtle transition-all hover:bg-primary/90 hover:shadow-lift sm:w-auto"
               >
                 Rejoindre ma classe
                 <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
               </Link>
               <Link
                 href="/login"
-                className="inline-flex h-12 items-center justify-center rounded-xl border border-border bg-card px-6 text-sm font-semibold transition-all hover:bg-muted"
+                className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-card px-6 py-3 text-sm font-semibold transition-all hover:bg-muted sm:w-auto"
               >
                 J&apos;ai déjà un compte
               </Link>
@@ -109,15 +93,13 @@ export default function HomePage() {
             <figure className="mx-auto max-w-lg">
               <div className="relative overflow-hidden rounded-3xl border border-border shadow-float">
                 <img
-                  src={CS_IMAGES.heroLanding}
+                  {...photoProps(CS_IMAGES.heroLanding, [640, 960, 1280, 1600], HERO_SIZES, true)}
                   alt="Illustration : des étudiants réunis autour d'un ordinateur"
                   className="aspect-[4/3] w-full object-cover"
-                  loading="eager"
-                  decoding="async"
                 />
-                <div className="absolute inset-0 rounded-3xl ring-1 ring-inset ring-black/5" />
+                <div className="pointer-events-none absolute inset-0 rounded-3xl ring-1 ring-inset ring-black/5" />
               </div>
-              <figcaption className="mt-2.5 text-center text-[11px] text-muted-foreground">
+              <figcaption className="mt-2.5 text-center text-xs text-muted-foreground">
                 Illustration — l&apos;espace d&apos;une classe sur ClassPulse.
               </figcaption>
             </figure>
@@ -127,7 +109,7 @@ export default function HomePage() {
 
       {/* ── Bandeau de positionnement ── */}
       <div className="border-y border-border/60 bg-card/40">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-8 gap-y-2 px-4 py-4 text-center text-xs font-semibold text-muted-foreground sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 py-4 text-center text-[13px] font-semibold leading-relaxed text-muted-foreground sm:px-6 sm:text-xs">
           <span className="flex items-center gap-1.5">
             <ShieldCheck size={13} className="text-primary" />
             Adhésion validée par un délégué ou un administrateur
@@ -144,16 +126,14 @@ export default function HomePage() {
       </div>
 
       {/* ── Section : Bibliothèque ── */}
-      <section id="bibliotheque" className="py-16 sm:py-24">
+      <section id="bibliotheque" className="scroll-mt-24 py-16 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div className="order-2 lg:order-1">
               <img
-                src={CS_IMAGES.coding}
+                {...photoProps(CS_IMAGES.coding, [480, 800, 1200], SECTION_SIZES)}
                 alt="Code de programmation affiché sur un écran"
                 className="aspect-[4/3] w-full rounded-3xl border border-border object-cover shadow-lift"
-                loading="lazy"
-                decoding="async"
               />
             </div>
             <div className="order-1 lg:order-2">
@@ -195,7 +175,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Section : Communauté ── */}
-      <section id="communautes" className="border-y border-border/60 bg-card/40 py-16 sm:py-24">
+      <section id="communautes" className="scroll-mt-24 border-y border-border/60 bg-card/40 py-16 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>
@@ -229,11 +209,9 @@ export default function HomePage() {
             </div>
             <div>
               <img
-                src={CS_IMAGES.teamwork}
+                {...photoProps(CS_IMAGES.teamwork, [480, 800, 1200], SECTION_SIZES)}
                 alt="Des étudiants réunis autour d'un ordinateur portable"
                 className="aspect-[4/3] w-full rounded-3xl border border-border object-cover shadow-lift"
-                loading="lazy"
-                decoding="async"
               />
             </div>
           </div>
@@ -241,16 +219,14 @@ export default function HomePage() {
       </section>
 
       {/* ── Section : Assistant ── */}
-      <section id="assistant" className="py-16 sm:py-24">
+      <section id="assistant" className="scroll-mt-24 py-16 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div className="order-2 lg:order-1">
               <img
-                src={CS_IMAGES.contexts.ai}
+                {...photoProps(CS_IMAGES.contexts.ai, [480, 800, 1200], SECTION_SIZES)}
                 alt="Développeur travaillant la nuit sur un ordinateur"
                 className="aspect-[4/3] w-full rounded-3xl border border-border object-cover shadow-lift"
-                loading="lazy"
-                decoding="async"
               />
             </div>
             <div className="order-1 lg:order-2">
@@ -285,7 +261,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Fonctionnement ── */}
-      <section id="fonctionnement" className="border-y border-border/60 bg-card/40 py-14">
+      <section id="fonctionnement" className="scroll-mt-24 border-y border-border/60 bg-card/40 py-14">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="mx-auto max-w-xl text-center">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Fonctionnement</p>
@@ -321,7 +297,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6">
           <div className="brand-card relative overflow-hidden rounded-3xl p-8 text-center shadow-lift sm:p-14">
             <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-border bg-white shadow-subtle">
-              <img src="/logo-mark.png" alt="ClassPulse" className="h-full w-full object-contain" />
+              <img src="/logo-mark.png" alt="" width={48} height={48} className="h-full w-full object-contain" />
             </div>
             <h2 className="mt-5 font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               {SITE.tagline}
@@ -330,17 +306,17 @@ export default function HomePage() {
               Créez votre compte et choisissez votre classe. Un délégué valide
               votre adhésion, puis l&apos;espace de votre classe vous ouvre.
             </p>
-            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 md:flex-row">
               <Link
                 href="/register"
-                className="group inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm font-semibold text-primary-foreground shadow-subtle transition-all hover:bg-primary/90 hover:shadow-lift sm:w-auto"
+                className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-center text-sm font-semibold leading-snug text-primary-foreground shadow-subtle transition-all hover:bg-primary/90 hover:shadow-lift sm:w-auto sm:px-8"
               >
                 Créer mon compte gratuitement
-                <ChevronRight size={17} className="transition-transform group-hover:translate-x-0.5" />
+                <ChevronRight size={17} className="shrink-0 transition-transform group-hover:translate-x-0.5" />
               </Link>
               <Link
                 href="/login"
-                className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-border bg-card px-8 text-sm font-semibold transition-all hover:bg-muted sm:w-auto"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold transition-all hover:bg-muted sm:w-auto sm:px-8"
               >
                 J&apos;ai déjà un compte
               </Link>
@@ -355,7 +331,7 @@ export default function HomePage() {
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl border border-border bg-white">
-                <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
+                <img src="/logo-mark.png" alt="" width={32} height={32} className="h-full w-full object-contain" />
               </div>
               <span className="font-display text-sm font-bold text-foreground">ClassPulse</span>
             </div>
