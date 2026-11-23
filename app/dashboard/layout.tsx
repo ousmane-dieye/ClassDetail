@@ -123,7 +123,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <footer className="hidden border-t border-border/50 px-8 py-3 items-center justify-between md:flex">
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <img src="/logo-mark.png" alt="" className="h-3.5 w-3.5 rounded-[3px] border border-border/60" />
-              <span>ClassPulse — Plateforme académique EdTech · Développé par laDetail</span>
+              <span>ClassPulse · Développé par laDetail</span>
             </div>
             <span className="text-[11px] text-muted-foreground">© {new Date().getFullYear()}</span>
           </footer>
