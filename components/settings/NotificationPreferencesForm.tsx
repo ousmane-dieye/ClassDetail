@@ -156,7 +156,7 @@ export function NotificationPreferencesForm({ initial }: { initial: PreferenceSt
             type="button"
             onClick={enableAll}
             disabled={isPending}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition-all hover:border-primary/35 hover:text-primary disabled:opacity-60"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition-all hover:border-primary/35 hover:text-primary disabled:opacity-60"
           >
             <Check size={14} strokeWidth={2} />
             Tout activer
@@ -165,7 +165,7 @@ export function NotificationPreferencesForm({ initial }: { initial: PreferenceSt
             type="button"
             onClick={resetLocally}
             disabled={isPending}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition-all hover:border-primary/35 hover:text-primary disabled:opacity-60"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition-all hover:border-primary/35 hover:text-primary disabled:opacity-60"
           >
             <RotateCcw size={14} strokeWidth={2} />
             Paramètres par défaut

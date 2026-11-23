@@ -222,16 +222,16 @@ export function ChatRoom({
   };
 
   return (
-    <Card className="flex h-[72vh] flex-col overflow-hidden shadow-lift">
+    <Card className="flex h-[calc(100dvh-15.5rem)] min-h-[16rem] max-h-[42rem] flex-col overflow-hidden shadow-lift sm:h-[min(72vh,42rem)]">
       {/* Zone des messages */}
-      <div className="flex-1 space-y-3.5 overflow-y-auto p-4 sm:p-6 bg-card/40">
+      <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-4 sm:p-6 bg-card/40">
         {hasMore && (
           <div className="flex justify-center pb-1">
             <button
               type="button"
               onClick={() => void loadOlder()}
               disabled={isLoadingOlder}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ChevronUp size={14} />
               <span>{isLoadingOlder ? "Chargement…" : "Charger les messages précédents"}</span>
@@ -261,7 +261,7 @@ export function ChatRoom({
               {(canModerate || m.author_id === currentUserId) && (
                 <button
                   onClick={() => handleDeleteMessage(m.id)}
-                  className="rounded-lg p-1.5 text-danger opacity-0 transition-opacity group-hover:opacity-100 hover:bg-danger/10"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-danger hover:bg-danger/10 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100"
                   title="Supprimer l'annonce"
                 >
                   <Trash2 size={16} />
@@ -285,7 +285,7 @@ export function ChatRoom({
               {(canModerate || m.author_id === currentUserId) && (
                 <button
                   onClick={() => handleDeleteMessage(m.id)}
-                  className="mt-1 text-[11px] text-danger opacity-0 transition-opacity group-hover:opacity-100 hover:underline"
+                  className="mt-1 inline-flex min-h-10 items-center px-2 text-[11px] text-danger hover:underline sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100"
                 >
                   Supprimer
                 </button>
@@ -298,7 +298,7 @@ export function ChatRoom({
 
       {/* Formulaire d'annonce */}
       {announceMode && (
-        <form action={postAnnouncement} className="flex flex-col gap-2.5 border-t border-warning/30 bg-warning/10 p-4 animate-fade-in">
+        <form action={postAnnouncement} className="flex flex-col gap-2.5 border-t border-warning/30 bg-warning/10 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] animate-fade-in">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-xs font-bold text-warning uppercase tracking-wider">
               <Megaphone size={14} /> Publication d'Annonce de Classe
@@ -309,7 +309,7 @@ export function ChatRoom({
                 setAnnounceMode(false);
                 setAnnounceContent("");
               }}
-              className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             >
               <X size={16} />
             </button>
@@ -339,7 +339,7 @@ export function ChatRoom({
       )}
 
       {/* Formulaire de message standard */}
-      <form onSubmit={handleSendMessage} className="flex items-center gap-2 border-t border-border bg-card p-3 sm:p-4">
+      <form onSubmit={handleSendMessage} className="flex items-center gap-2 border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4">
         <input type="hidden" name="classId" value={classId} />
         <Input
           name="content"

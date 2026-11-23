@@ -119,7 +119,33 @@ export default async function StatsPage() {
       {isAdmin && perClass.length > 0 && (
         <section className="space-y-4 pt-4">
           <h2 className="text-xl font-bold tracking-tight text-foreground">Statistiques détaillées par classe</h2>
-          <Card className="overflow-hidden">
+          <div className="space-y-2 lg:hidden">
+            {perClass.map((c) => (
+              <Card key={c.className} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 break-words font-bold text-foreground">{c.className}</p>
+                  <Badge variant={c.completionRate > 50 ? "success" : "warning"}>
+                    {c.completionRate}%
+                  </Badge>
+                </div>
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-xl bg-muted/50 p-2">
+                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">Étudiants</dt>
+                    <dd className="text-sm font-bold">{c.students}</dd>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-2">
+                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">Tâches</dt>
+                    <dd className="text-sm font-bold">{c.tasks}</dd>
+                  </div>
+                  <div className="rounded-xl bg-muted/50 p-2">
+                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">Complétions</dt>
+                    <dd className="text-sm font-bold">{c.completions}</dd>
+                  </div>
+                </dl>
+              </Card>
+            ))}
+          </div>
+          <Card className="hidden overflow-hidden lg:block">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border bg-muted/50 text-xs font-bold uppercase tracking-wider text-muted-foreground">

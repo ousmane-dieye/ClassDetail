@@ -26,7 +26,7 @@ export function SettingsTabs() {
   return (
     <nav
       aria-label="Sections des paramètres"
-      className="flex items-center gap-1.5 overflow-x-auto no-scrollbar rounded-2xl border border-border/70 bg-card/70 p-1.5 shadow-sm"
+      className="grid grid-cols-2 gap-1.5 rounded-2xl border border-border/70 bg-card/70 p-1.5 shadow-sm lg:flex lg:items-center lg:overflow-x-auto"
     >
       {SETTINGS_TABS.map(({ href, label, icon: Icon }) => {
         const active = pathname === href;
@@ -35,7 +35,7 @@ export function SettingsTabs() {
             key={href}
             href={href}
             aria-current={active ? "page" : undefined}
-            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all duration-150 ${
+            className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-2.5 py-2 text-xs sm:px-3.5 sm:text-sm font-semibold transition-all duration-150 ${
               active
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"

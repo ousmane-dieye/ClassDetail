@@ -135,16 +135,20 @@ export function TaskCard({ task, completed }: { task: TaskItem; completed: boole
             type="button"
             onClick={handleToggle}
             disabled={isPending}
-            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-all duration-200 ${
-              isPending ? "animate-pulse-subtle" : ""
-            } ${
-              completed
-                ? "border-success bg-success text-white"
-                : "border-border hover:border-primary hover:bg-primary/8"
-            }`}
+            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
             aria-label={completed ? "Marquer comme non terminé" : "Marquer comme terminé"}
           >
-            {completed && <CheckCircle2 size={14} strokeWidth={2.5} />}
+            <span
+              className={`flex h-6 w-6 items-center justify-center rounded-lg border-2 transition-all duration-200 ${
+                isPending ? "animate-pulse-subtle" : ""
+              } ${
+                completed
+                  ? "border-success bg-success text-white"
+                  : "border-border hover:border-primary hover:bg-primary/8"
+              }`}
+            >
+              {completed && <CheckCircle2 size={14} strokeWidth={2.5} />}
+            </span>
           </button>
 
           {/* Task info */}

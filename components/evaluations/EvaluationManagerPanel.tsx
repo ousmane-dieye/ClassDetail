@@ -292,7 +292,7 @@ export function EvaluationManagerPanel({
             role="dialog"
             aria-modal="true"
             aria-labelledby="cancel-evaluation-title"
-            className="relative w-full max-w-md animate-scale-in rounded-2xl border border-border bg-card p-5 shadow-float sm:p-6"
+            className="relative max-h-[85dvh] w-full max-w-md animate-scale-in overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-float sm:p-6 sm:pb-6"
           >
             <h2 id="cancel-evaluation-title" className="font-display text-lg font-bold tracking-tight text-foreground">
               Annuler cette évaluation ?

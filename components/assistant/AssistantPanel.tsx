@@ -56,6 +56,10 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [panelHeight, setPanelHeight] = useState<number | null>(null);
 
   const loadChats = useCallback(async () => {
     const res = await getChatsAction();
@@ -83,6 +87,56 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, streamText, sending]);
+
+  // Modale clavier : Échap, piège de focus et blocage du scroll du fond,
+  // comme les autres dialogues du dashboard.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus({ preventScroll: true });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus?.();
+    };
+  }, []);
+
+  // Le clavier virtuel réduit la hauteur visible : le panneau suit le viewport
+  // réel au lieu de rester à 92 % de la hauteur « fenêtre » (iOS Safari).
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => setPanelHeight(Math.max(320, Math.round(viewport.height * 0.92)));
+    update();
+    viewport.addEventListener("resize", update);
+    return () => viewport.removeEventListener("resize", update);
+  }, []);
 
   const handleNewChat = useCallback(async () => {
     const res = await createChatAction();
@@ -262,7 +316,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/50 backdrop-blur-sm sm:items-center sm:p-4 animate-fade-in" role="dialog" aria-modal="true" aria-label="Assistant IA ClassPulse">
-      <div className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-background shadow-2xl sm:h-[min(85vh,720px)] sm:max-w-[460px] sm:rounded-3xl">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        style={{ "--assistant-panel-height": panelHeight ? `${panelHeight}px` : "92dvh" } as React.CSSProperties}
+        className="flex h-[var(--assistant-panel-height)] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-background shadow-2xl focus:outline-none sm:h-[min(85vh,720px)] sm:max-w-[460px] sm:rounded-3xl"
+      >
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border bg-card px-5 py-3.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-subtle">
@@ -280,14 +339,14 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           <button
             onClick={() => setShowHistory((v) => !v)}
             aria-label="Historique des conversations"
-            className={`rounded-xl p-2 transition-colors hover:bg-muted ${showHistory ? "bg-muted text-primary font-bold" : "text-muted-foreground"}`}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-muted ${showHistory ? "bg-muted text-primary font-bold" : "text-muted-foreground"}`}
           >
             <History size={18} />
           </button>
-          <button onClick={handleNewChat} aria-label="Nouveau chat" className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-muted">
+          <button onClick={handleNewChat} aria-label="Nouveau chat" className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted">
             <Plus size={18} />
           </button>
-          <button onClick={onClose} aria-label="Fermer l'assistant" className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-muted">
+          <button onClick={onClose} aria-label="Fermer l'assistant" className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted">
             <X size={18} />
           </button>
         </div>
@@ -305,7 +364,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 <button
                   onClick={(e) => void handleDeleteChat(c.id, e)}
                   aria-label={`Supprimer ${c.title}`}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-danger/10 hover:text-danger"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -336,7 +395,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                   <button
                     key={qa.label}
                     onClick={() => void sendMessage(qa.prompt)}
-                    className="rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground transition-all hover:border-primary/50 hover:text-primary hover:shadow-subtle"
+                    className="min-h-10 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground transition-all hover:border-primary/50 hover:text-primary hover:shadow-subtle"
                   >
                     {qa.label}
                   </button>
@@ -347,7 +406,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
             <>
               {displayMessages.map((m) => (
                 <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] rounded-2xl p-4 shadow-subtle ${m.role === "user" ? "rounded-br-xs bg-primary text-primary-foreground" : "rounded-bl-xs border border-border bg-card text-foreground"}`}>
+                  <div className={`max-w-full rounded-2xl p-3 shadow-subtle sm:max-w-[85%] sm:p-4 ${m.role === "user" ? "rounded-br-xs bg-primary text-primary-foreground" : "rounded-bl-xs border border-border bg-card text-foreground"}`}>
                     {m.role === "assistant" ? (
                       <Markdown content={m.content} onNavigate={onClose} />
                     ) : (
@@ -360,7 +419,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                             key={i}
                             href={a.href}
                             onClick={onClose}
-                            className="inline-flex items-center gap-1 rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
+                            className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
                           >
                             {a.label}
                           </Link>
@@ -389,7 +448,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Composer */}
-        <div className="border-t border-border bg-card p-3 sm:p-4">
+        <div className="border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4">
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}

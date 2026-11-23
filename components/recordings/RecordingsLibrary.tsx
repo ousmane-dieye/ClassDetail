@@ -177,7 +177,7 @@ export function RecordingsLibrary({
                     href={r.driveUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-all hover:bg-primary/90 shadow-subtle"
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground transition-all hover:bg-primary/90 shadow-subtle"
                   >
                     <PlayCircle size={14} />
                     <span>Visionner</span>
@@ -191,7 +191,7 @@ export function RecordingsLibrary({
                       resourceLabel="cet enregistrement"
                       successMessage="Cours retiré de votre bibliothèque."
                       buttonTitle="Supprimer la vidéo"
-                      className="h-8 w-8"
+                      className="h-10 w-10 sm:h-8 sm:w-8"
                       iconSize={14}
                     />
                   )}
@@ -210,7 +210,8 @@ export function RecordingsLibrary({
  * l'exécution : la saisie « YYYY-MM-DD » est interprétée comme une date de
  * calendrier (évite le décalage d'un jour et tout désaccord d'hydratation).
  */
-function formatSessionDate(dateYmd: string): string {
+function formatSessionDate(dateYmd: string | null | undefined): string {
+  if (!dateYmd || typeof dateYmd !== "string") return "—";
   const [year, month, day] = dateYmd.split("-").map(Number);
   if (!year || !month || !day) return dateYmd;
   const pad = (value: number) => String(value).padStart(2, "0");

@@ -80,7 +80,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
 
         {/* Zone de contenu — flex-1 s'adapte automatiquement à la largeur de la sidebar */}
-        <div className="flex flex-1 flex-col overflow-x-hidden min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
           {/* En-tête supérieur */}
           <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/70 bg-background/85 px-4 py-3 backdrop-blur-md md:px-8">
             <div className="flex items-center gap-3">
@@ -109,7 +109,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <Search size={16} />
               </button>
 
-              <ThemeToggle />
+              {/* Zone tactile élargie localement : le composant partagé reste inchangé. */}
+              <div className="[&_[role=radio]]:h-10 [&_[role=radio]]:min-w-10 [&_[role=radio]]:justify-center [&_[role=radio]_span]:hidden sm:[&_[role=radio]]:h-auto sm:[&_[role=radio]]:min-w-0 lg:[&_[role=radio]_span]:inline">
+                <ThemeToggle />
+              </div>
               <NotificationBell userId={user.id} initialUnreadCount={unreadCount ?? 0} />
             </div>
           </header>

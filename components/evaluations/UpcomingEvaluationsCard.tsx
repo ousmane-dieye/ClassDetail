@@ -37,13 +37,13 @@ export function UpcomingEvaluationsCard({
             <ClipboardCheck aria-hidden size={17} />
           </span>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-bold">Prochaines évaluations</h2>
+            <h2 className="text-sm font-bold leading-tight sm:truncate">Prochaines évaluations</h2>
             <p className="text-xs text-muted-foreground"> Publiées et à venir </p>
           </div>
         </div>
         <Link
           href="/dashboard/evaluations"
-          className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+          className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-xs font-semibold text-primary hover:bg-primary/10"
         >
           Tout voir
         </Link>
@@ -98,7 +98,7 @@ export function UpcomingEvaluationsCard({
 
       <Link
         href={`/dashboard/evaluations?class=${classId}`}
-        className="mt-3 block rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-center text-xs font-semibold text-primary hover:bg-primary/10"
+        className="mt-3 flex min-h-10 items-center justify-center rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 text-center text-xs font-semibold text-primary hover:bg-primary/10"
       >
         Voir toutes les évaluations
       </Link>

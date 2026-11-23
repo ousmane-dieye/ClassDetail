@@ -142,7 +142,7 @@ export function HintsLibrary({
                       resourceLabel="ce hint"
                       successMessage="Hint supprimé avec succès."
                       buttonTitle="Supprimer le Hint"
-                      className="h-8 w-8"
+                      className="h-10 w-10 sm:h-8 sm:w-8"
                       iconSize={14}
                     />
                   )}

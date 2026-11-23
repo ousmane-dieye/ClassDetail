@@ -264,7 +264,7 @@ export function AccountSection({ account }: { account: AccountData }) {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                    className="absolute -right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted-foreground transition hover:text-foreground"
                     aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -312,7 +312,7 @@ export function AccountSection({ account }: { account: AccountData }) {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                    className="absolute -right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted-foreground transition hover:text-foreground"
                     aria-label={showConfirmPassword ? "Masquer la confirmation" : "Afficher la confirmation"}
                   >
                     {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}

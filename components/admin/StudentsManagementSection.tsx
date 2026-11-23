@@ -442,7 +442,7 @@ export function StudentsManagementSection({
                         variant={isDelegate ? "outline" : "outline"}
                         onClick={() => handleToggleDelegate(student)}
                         disabled={isDelegateActionPending}
-                        className={`text-xs gap-1.5 h-8 ${
+                        className={`text-xs gap-1.5 h-10 sm:h-8 ${
                           isDelegate
                             ? "border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
                             : "hover:border-primary/40 hover:text-primary"
@@ -470,7 +470,7 @@ export function StudentsManagementSection({
                           setRemoveError(null);
                           setStudentToRemove(student);
                         }}
-                        className="text-xs gap-1.5 h-8 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+                        className="text-xs gap-1.5 h-10 sm:h-8 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
                         title="Retirer cet étudiant de sa classe"
                       >
                         <UserMinus size={13} />
@@ -487,7 +487,7 @@ export function StudentsManagementSection({
                         setDeleteError(null);
                         setStudentToDelete(student);
                       }}
-                      className="text-xs gap-1.5 h-8 border-danger/40 text-danger hover:bg-danger/10 hover:text-danger"
+                      className="text-xs gap-1.5 h-10 sm:h-8 border-danger/40 text-danger hover:bg-danger/10 hover:text-danger"
                       title="Supprimer définitivement ce compte étudiant"
                     >
                       <Trash2 size={13} />
@@ -511,7 +511,7 @@ export function StudentsManagementSection({
           aria-labelledby="dialog-remove-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in"
         >
-          <div className="relative w-full max-w-lg rounded-2xl border border-warning/40 bg-card p-6 shadow-card space-y-4">
+          <div className="relative max-h-[85dvh] w-full max-w-lg space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-warning/40 bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-card sm:p-6 sm:pb-6">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
                 <AlertTriangle size={20} strokeWidth={2} />
@@ -567,7 +567,7 @@ export function StudentsManagementSection({
               </ul>
             </div>
 
-            <div className="flex justify-end gap-2.5 pt-2">
+            <div className="flex flex-col-reverse gap-2.5 pt-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
@@ -611,7 +611,7 @@ export function StudentsManagementSection({
           aria-labelledby="dialog-delete-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in"
         >
-          <div className="relative w-full max-w-lg rounded-2xl border border-danger/40 bg-card p-6 shadow-card space-y-4">
+          <div className="relative max-h-[85dvh] w-full max-w-lg space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-danger/40 bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-card sm:p-6 sm:pb-6">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger">
                 <Trash2 size={20} strokeWidth={2} />
@@ -658,7 +658,7 @@ export function StudentsManagementSection({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2.5 pt-2">
+            <div className="flex flex-col-reverse gap-2.5 pt-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"

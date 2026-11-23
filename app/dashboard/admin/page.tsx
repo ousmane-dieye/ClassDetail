@@ -307,7 +307,7 @@ export default async function AdminDashboard() {
                         resourceLabel="cette classe"
                         successMessage="Classe supprimée avec succès."
                         buttonTitle="Supprimer la classe"
-                        className="h-7 w-7"
+                        className="h-10 w-10 shrink-0 sm:h-7 sm:w-7"
                         iconSize={13}
                       />
                     </div>

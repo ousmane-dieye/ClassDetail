@@ -249,7 +249,7 @@ export function EvaluationFormDialog({
         </div>
 
         {/* Contenu défilant */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+        <form id="evaluation-form" onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
           <div className="space-y-4">
             {/* Titre */}
             <div className="space-y-1.5">
@@ -475,16 +475,19 @@ export function EvaluationFormDialog({
             )}
           </div>
 
-          {/* Actions */}
-          <div className="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+        </form>
+
+        {/* Actions toujours visibles, même avec le clavier ouvert ou un long formulaire. */}
+        <div className="shrink-0 border-t border-border/70 bg-card px-5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3">
+          <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
             <Button ref={cancelRef} type="button" variant="outline" onClick={onClose} disabled={pending}>
               Annuler
             </Button>
-            <Button type="submit" isLoading={pending} loadingText="Enregistrement…">
+            <Button type="submit" form="evaluation-form" isLoading={pending} loadingText="Enregistrement…">
               {isEdit ? "Enregistrer" : publish ? "Créer et publier" : "Enregistrer le brouillon"}
             </Button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

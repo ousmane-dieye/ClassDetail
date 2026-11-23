@@ -186,7 +186,7 @@ export function ConfirmDeleteDialog({
         aria-modal="true"
         aria-labelledby="confirm-delete-title"
         aria-describedby="confirm-delete-desc"
-        className="relative w-full max-w-md animate-scale-in rounded-2xl border border-border bg-card p-5 shadow-float sm:p-6"
+        className="relative max-h-[85dvh] w-full max-w-md animate-scale-in overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-float sm:p-6 sm:pb-6"
       >
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger">

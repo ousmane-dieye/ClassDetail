@@ -192,7 +192,7 @@ export function EvaluationsView({
             role="tab"
             aria-selected={tab === "upcoming"}
             onClick={() => setTab("upcoming")}
-            className={`rounded-lg px-3.5 h-9 text-xs font-bold transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-lg px-3.5 text-xs font-bold transition-colors ${
               tab === "upcoming" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -204,7 +204,7 @@ export function EvaluationsView({
             role="tab"
             aria-selected={tab === "past"}
             onClick={() => setTab("past")}
-            className={`rounded-lg px-3.5 h-9 text-xs font-bold transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-lg px-3.5 text-xs font-bold transition-colors ${
               tab === "past" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -387,7 +387,7 @@ export function EvaluationsView({
                         type="button"
                         disabled={editLoading}
                         onClick={() => void openEdit(evaluation)}
-                        className="absolute right-2.5 top-2.5 rounded-lg border border-border bg-background/90 px-2 py-1 text-[11px] font-bold text-muted-foreground shadow-subtle backdrop-blur transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-60"
+                        className="absolute right-2.5 top-2.5 inline-flex min-h-10 items-center rounded-lg border border-border bg-background/90 px-2.5 text-[11px] font-bold text-muted-foreground shadow-subtle backdrop-blur transition-colors hover:border-primary/30 hover:text-foreground disabled:opacity-60"
                       >
                         {editLoading ? "…" : "Modifier"}
                       </button>

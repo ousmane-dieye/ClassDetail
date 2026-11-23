@@ -93,7 +93,44 @@ export default async function AdminEmailsPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">Derniers emails</h2>
-        <div className="overflow-x-auto rounded-lg border border-border">
+        {/* Mobile : une carte par email, aucune largeur fixe à faire défiler. */}
+        <div className="space-y-2 lg:hidden">
+          {data.recent.length === 0 && (
+            <p className="rounded-lg border border-border px-4 py-6 text-center text-sm text-muted-foreground">
+              Aucun email envoyé pour le moment.
+            </p>
+          )}
+          {data.recent.map((row) => (
+            <div key={row.id} className="space-y-2 rounded-xl border border-border bg-card p-3.5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 break-all text-sm font-semibold text-foreground">{row.email}</p>
+                <StatusBadge status={row.status} />
+              </div>
+              <dl className="grid grid-cols-[auto,minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">Utilisateur</dt>
+                <dd className="min-w-0 break-words">{row.student_name}</dd>
+                <dt className="text-muted-foreground">Devoir</dt>
+                <dd className="min-w-0 break-words">{row.assignment_title ?? "—"}</dd>
+                <dt className="text-muted-foreground">Type</dt>
+                <dd className="min-w-0 break-words">{TYPE_LABELS[row.notification_type] ?? row.notification_type}</dd>
+                <dt className="text-muted-foreground">Date</dt>
+                <dd className="min-w-0 break-words text-muted-foreground">
+                  {row.created_at
+                    ? new Date(row.created_at).toLocaleString("fr-FR", {
+                        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+                      })
+                    : "—"}
+                </dd>
+              </dl>
+              {row.status === "FAILED" && row.error_message && (
+                <p className="break-words text-xs text-danger">{row.error_message}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Tablet / desktop : le tableau conservé tel quel. */}
+        <div className="hidden overflow-x-auto rounded-lg border border-border lg:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-muted text-xs text-muted-foreground">
               <tr>

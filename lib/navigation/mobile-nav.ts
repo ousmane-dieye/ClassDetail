@@ -23,7 +23,7 @@ export interface MobileNavItem {
 export const MOBILE_PRIMARY_NAV: MobileNavItem[] = [
   { href: "/dashboard", label: "Accueil", shortLabel: "Accueil", exact: true },
   { href: "/dashboard/tasks", label: "Tâches & Devoirs", shortLabel: "Tâches" },
-  { href: "/dashboard/documents", label: "Documents", shortLabel: "Documents" },
+  { href: "/dashboard/documents", label: "Documents", shortLabel: "Docs" },
   { href: "/dashboard/chat", label: "Chat de classe", shortLabel: "Chat" },
 ];
 

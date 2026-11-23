@@ -182,7 +182,7 @@ export function NotificationsCenter({ userId, initial }: { userId: string; initi
               setFilter(f.key);
               setVisibleCount(PAGE_SIZE);
             }}
-            className={`shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+            className={`min-h-10 shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
               filter === f.key
                 ? "bg-primary text-primary-foreground shadow-subtle"
                 : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"

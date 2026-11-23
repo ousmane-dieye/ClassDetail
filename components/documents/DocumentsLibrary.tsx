@@ -191,7 +191,7 @@ export function DocumentsLibrary({
                     href={d.driveUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 font-semibold text-primary-foreground transition-all hover:bg-primary/90 shadow-subtle"
+                    className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-primary px-3 font-semibold text-primary-foreground transition-all hover:bg-primary/90 shadow-subtle"
                   >
                     <span>Ouvrir</span>
                     <ExternalLink size={12} />
@@ -205,7 +205,7 @@ export function DocumentsLibrary({
                       resourceLabel="ce document"
                       successMessage="Document supprimé avec succès."
                       buttonTitle="Supprimer le document"
-                      className="h-8 w-8"
+                      className="h-10 w-10 sm:h-8 sm:w-8"
                       iconSize={14}
                     />
                   )}
@@ -225,7 +225,8 @@ export function DocumentsLibrary({
  * la partie date de l'horodatage ISO est interprétée telle quelle,
  * selon la même convention que `formatSessionDate` (Cours enregistrés).
  */
-function formatPublicationDate(isoTimestamp: string): string {
+function formatPublicationDate(isoTimestamp: string | null | undefined): string {
+  if (!isoTimestamp || typeof isoTimestamp !== "string") return "—";
   const [year, month, day] = isoTimestamp.slice(0, 10).split("-").map(Number);
   if (!year || !month || !day) return isoTimestamp;
   const pad = (value: number) => String(value).padStart(2, "0");

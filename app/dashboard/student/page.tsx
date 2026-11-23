@@ -163,7 +163,7 @@ export default async function StudentDashboard() {
 
           <Link
             href="/dashboard/tasks"
-            className="group inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80"
+            className="group inline-flex min-h-10 items-center gap-1.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80"
           >
             Consulter mes tâches
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
@@ -181,13 +181,14 @@ export default async function StudentDashboard() {
             <p className="text-sm font-bold text-danger">
               {urgentTasks.length} devoir{urgentTasks.length > 1 ? "s" : ""} dans les prochaines 48h
             </p>
-            <p className="truncate text-xs text-danger/70">
-              {urgentTasks.map((t) => t.title).join(" · ")}
+            <p className="line-clamp-2 break-words text-xs leading-snug text-danger/70">
+              {urgentTasks[0]?.title}
+              {urgentTasks.length > 1 ? ` · +${urgentTasks.length - 1} autre${urgentTasks.length > 2 ? "s" : ""}` : ""}
             </p>
           </div>
           <Link
             href="/dashboard/tasks"
-            className="shrink-0 rounded-xl border border-danger/30 bg-danger/10 px-3 py-1.5 text-xs font-bold text-danger transition-all hover:bg-danger/20"
+            className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-danger/30 bg-danger/10 px-3 text-xs font-bold text-danger transition-all hover:bg-danger/20"
           >
             Voir tout
           </Link>
@@ -197,9 +198,9 @@ export default async function StudentDashboard() {
       {/* ── Grille principale ── */}
       <div className="grid gap-8 lg:grid-cols-12">
         {/* À faire prochainement */}
-        <section className="space-y-4 lg:col-span-7">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+        <section className="min-w-0 space-y-4 lg:col-span-7">
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Clock size={15} />
               </div>
@@ -209,7 +210,7 @@ export default async function StudentDashboard() {
             </div>
             <Link
               href="/dashboard/tasks"
-              className="group inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/8"
+              className="group inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-bold text-primary transition-all hover:bg-primary/8"
             >
               <span>Voir tout</span>
               <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
@@ -232,7 +233,7 @@ export default async function StudentDashboard() {
         </section>
 
         {/* Dernières ressources + découverte */}
-        <section className="space-y-6 lg:col-span-5">
+        <section className="min-w-0 space-y-6 lg:col-span-5">
           {/* Emploi du temps — prochain cours / états vides */}
           <TodayScheduleCard classId={profile?.class_id ?? null} />
 
@@ -242,8 +243,8 @@ export default async function StudentDashboard() {
           )}
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10 text-success">
                   <FileText size={15} />
                 </div>
@@ -253,7 +254,7 @@ export default async function StudentDashboard() {
               </div>
               <Link
                 href="/dashboard/documents"
-                className="group inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/8"
+                className="group inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-bold text-primary transition-all hover:bg-primary/8"
               >
                 <span>Bibliothèque</span>
                 <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
@@ -276,7 +277,7 @@ export default async function StudentDashboard() {
                           <FileText size={18} strokeWidth={1.75} />
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-foreground">{d.title}</p>
+                          <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-foreground">{d.title}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {new Date(d.created_at).toLocaleDateString("fr-FR", {
                               day: "numeric",
@@ -289,7 +290,7 @@ export default async function StudentDashboard() {
                         href={d.drive_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-bold text-primary transition-all hover:border-primary/30 hover:bg-primary/8"
+                        className="ml-2 inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-border bg-background px-2.5 text-xs font-bold text-primary transition-all hover:border-primary/30 hover:bg-primary/8"
                       >
                         Ouvrir
                         <ArrowRight size={11} />

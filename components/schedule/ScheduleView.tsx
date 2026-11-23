@@ -299,7 +299,7 @@ export function ScheduleView({
                 className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/80 px-2.5 py-1 text-xs font-semibold text-foreground shadow-2xs backdrop-blur-xs transition-colors hover:border-border"
               >
                 <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", c.dot)} />
-                <span className="truncate max-w-[160px]">{s.name}</span>
+                <span className="truncate max-w-[160px]" title={s.name}>{s.name}</span>
               </span>
             );
           })}

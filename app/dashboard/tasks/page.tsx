@@ -134,7 +134,7 @@ export default async function TasksPage() {
                 <TaskCard task={t} completed={completedIds.has(t.id)} />
 
                 {canManage && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/80 bg-muted/30 p-3 sm:px-5">
+                  <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-muted/30 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
                     <div className="flex flex-wrap items-center gap-2">
                       <details className="group">
                         <summary className="cursor-pointer select-none rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted inline-flex items-center gap-1.5">
@@ -153,17 +153,17 @@ export default async function TasksPage() {
                         resourceLabel="cette tâche"
                         successMessage="Tâche supprimée avec succès."
                         buttonTitle="Supprimer la tâche"
-                        className="h-8 w-8"
+                        className="h-10 w-10 sm:h-8 sm:w-8"
                         iconSize={13}
                       />
                     </div>
 
-                    <details className="group">
+                    <details className="group relative">
                       <summary className="cursor-pointer select-none rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 inline-flex items-center gap-1.5">
                         <Users size={13} />
                         <span>Suivi ({completedCount}/{classStudents.length} terminés)</span>
                       </summary>
-                      <div className="mt-3 max-h-64 overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-subtle min-w-[260px]">
+                      <div className="absolute right-0 top-full z-20 mt-3 max-h-64 w-[260px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-subtle">
                         {classStudents.length === 0 && (
                           <p className="text-xs text-muted-foreground">Aucun élève inscrit.</p>
                         )}

@@ -166,7 +166,7 @@ export function EvaluationResourcesDialog({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+        <form id="evaluation-resources-form" onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
           <div className="space-y-4">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               Facultatif : associez des supports déjà partagés dans la classe pour aider les
@@ -259,15 +259,18 @@ export function EvaluationResourcesDialog({
             )}
           </div>
 
-          <div className="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+        </form>
+
+        <div className="shrink-0 border-t border-border/70 bg-card px-5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3">
+          <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
             <Button ref={cancelRef} type="button" variant="outline" onClick={onClose} disabled={pending}>
               Annuler
             </Button>
-            <Button type="submit" isLoading={pending}>
+            <Button type="submit" form="evaluation-resources-form" isLoading={pending}>
               Enregistrer
             </Button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

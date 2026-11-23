@@ -154,7 +154,7 @@ export function SessionDetailDialog({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {/* Horaires + salle */}
           <div className="space-y-2.5">
             <div className="flex items-center gap-2.5 text-sm">
